@@ -1,5 +1,6 @@
 import { FileText, Newspaper, Calculator } from "lucide-react";
 
+import { TickerSearch } from "@/components/analysis/ticker-search";
 import { Container } from "@/components/layout/container";
 import {
   Card,
@@ -22,13 +23,7 @@ export default function HomePage() {
           citations.
         </p>
         <div className="mt-8">
-          {/* TODO Phase 15: replace with TickerSearch client island */}
-          <div
-            id="ticker-search-placeholder"
-            className="mx-auto flex h-12 max-w-md items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground"
-          >
-            Ticker search (Phase 15)
-          </div>
+          <TickerSearch />
         </div>
       </section>
 

@@ -11,7 +11,7 @@ dependencies = [
     "litellm",
     "httpx",
     "tenacity",
-    "sqlalchemy>=2",
+    "sqlalchemy[asyncio]>=2",
     "asyncpg",
     "alembic",
     "pgvector",

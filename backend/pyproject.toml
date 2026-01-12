@@ -19,6 +19,8 @@ dependencies = [
     "python-dotenv",
     "pyyaml",
     "feedparser",
+    "reportlab",
+    "openpyxl",
     "pytest",
     "pytest-asyncio",
     "pytest-mock",

@@ -18,6 +18,7 @@ dependencies = [
     "redis",
     "python-dotenv",
     "pyyaml",
+    "feedparser",
     "pytest",
     "pytest-asyncio",
     "pytest-mock",

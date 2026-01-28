@@ -96,7 +96,7 @@ class News(Base):
         String(16), ForeignKey("companies.ticker"), nullable=False
     )
     headline: Mapped[str | None] = mapped_column(Text)
-    url: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text, unique=True)
     source: Mapped[str | None] = mapped_column(String(64))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sentiment: Mapped[Decimal | None] = mapped_column(Numeric)

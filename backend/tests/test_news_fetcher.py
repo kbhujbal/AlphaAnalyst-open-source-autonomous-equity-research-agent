@@ -9,7 +9,6 @@ from src.fetchers import news as news_module
 from src.fetchers.news import (
     NewsFetchError,
     _dedupe,
-    _title_similarity,
     fetch_news,
 )
 from src.models.filing import Source
@@ -50,35 +49,59 @@ def stub_resolve_query(mocker) -> AsyncMock:
     )
 
 
-def test_title_similarity_above_threshold_for_near_identical_headlines() -> None:
-    a = "Tesla Q1 2024 deliveries miss analyst estimates"
-    b = "Tesla Q1 2024 deliveries miss analysts estimates"
-    assert _title_similarity(a, b) > 0.92
+def _vec(*nonzero: tuple[int, float]) -> list[float]:
+    """Build a sparse-style vector with `nonzero` (index, value) entries."""
+    v = [0.0] * 8
+    for idx, val in nonzero:
+        v[idx] = val
+    return v
 
 
-def test_title_similarity_below_threshold_for_distinct_headlines() -> None:
-    a = "Tesla Q1 2024 deliveries miss estimates"
-    b = "Apple unveils new MacBook lineup at WWDC"
-    assert _title_similarity(a, b) < 0.5
+def _embed_by_headline(mapping: dict[str, list[float]]):
+    async def _impl(texts: list[str]) -> list[list[float]]:
+        return [mapping[t] for t in texts]
+
+    return _impl
 
 
-def test_dedupe_removes_exact_url_duplicates() -> None:
+async def test_dedupe_removes_exact_url_duplicates(mocker) -> None:
+    mocker.patch.object(
+        news_module,
+        "embed",
+        new=AsyncMock(side_effect=_embed_by_headline({
+            "A": _vec((0, 1.0)),
+            "C": _vec((1, 1.0)),
+        })),
+    )
     articles = [
         _make_article(headline="A", url="https://x.com/1", provider="finnhub"),
         _make_article(headline="B (different)", url="https://x.com/1", provider="marketaux"),
         _make_article(headline="C", url="https://x.com/2", provider="google_news"),
     ]
-    kept, removed = _dedupe(articles)
+    kept, removed = await _dedupe(articles)
     assert {a.url for a in kept} == {"https://x.com/1", "https://x.com/2"}
     assert removed == 1
 
 
-def test_dedupe_removes_near_duplicate_headlines() -> None:
+async def test_dedupe_removes_near_duplicate_headlines_by_embedding(mocker) -> None:
+    mocker.patch.object(
+        news_module,
+        "embed",
+        new=AsyncMock(side_effect=_embed_by_headline({
+            # near-identical embeddings -> cosine ~1.0
+            "Tesla Q1 2024 deliveries miss analyst estimates": _vec(
+                (0, 1.0), (1, 0.05)
+            ),
+            "Tesla Q1 2024 deliveries miss analysts estimates": _vec(
+                (0, 1.0), (1, 0.04)
+            ),
+            "Apple unveils new MacBook lineup at WWDC": _vec((2, 1.0)),
+        })),
+    )
     articles = [
         _make_article(
             headline="Tesla Q1 2024 deliveries miss analyst estimates",
             url="https://reuters.com/a",
-            provider="finnhub",
         ),
         _make_article(
             headline="Tesla Q1 2024 deliveries miss analysts estimates",
@@ -91,9 +114,31 @@ def test_dedupe_removes_near_duplicate_headlines() -> None:
             provider="google_news",
         ),
     ]
-    kept, removed = _dedupe(articles)
+    kept, removed = await _dedupe(articles)
     assert len(kept) == 2
     assert removed == 1
+
+
+async def test_dedupe_keeps_distinct_headlines(mocker) -> None:
+    mocker.patch.object(
+        news_module,
+        "embed",
+        new=AsyncMock(side_effect=_embed_by_headline({
+            "First story": _vec((0, 1.0)),
+            "Totally unrelated thing": _vec((4, 1.0)),
+        })),
+    )
+    articles = [
+        _make_article(headline="First story", url="https://a.com/1"),
+        _make_article(
+            headline="Totally unrelated thing",
+            url="https://b.com/2",
+            provider="marketaux",
+        ),
+    ]
+    kept, removed = await _dedupe(articles)
+    assert len(kept) == 2
+    assert removed == 0
 
 
 async def test_fetch_news_aggregates_and_dedupes_across_providers(
@@ -143,6 +188,15 @@ async def test_fetch_news_aggregates_and_dedupes_across_providers(
             ]
         ),
     )
+    mocker.patch.object(
+        news_module,
+        "embed",
+        new=AsyncMock(side_effect=_embed_by_headline({
+            "Tesla beats Q1 deliveries": _vec((0, 1.0)),
+            "Apple announces M4 chip": _vec((1, 1.0)),
+            "Tesla SEC inquiry update": _vec((2, 1.0)),
+        })),
+    )
 
     articles = await fetch_news("TSLA", days=30)
     by_url = {a.url for a in articles}
@@ -187,6 +241,14 @@ async def test_fetch_news_continues_when_one_provider_fails(
                 )
             ]
         ),
+    )
+    mocker.patch.object(
+        news_module,
+        "embed",
+        new=AsyncMock(side_effect=_embed_by_headline({
+            "Finnhub article": _vec((0, 1.0)),
+            "Google News article": _vec((1, 1.0)),
+        })),
     )
 
     with caplog.at_level("WARNING", logger=news_module.__name__):

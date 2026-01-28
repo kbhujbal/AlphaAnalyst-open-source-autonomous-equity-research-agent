@@ -15,6 +15,7 @@ from src.clients.marketaux import MarketauxClient
 from src.db import Company
 from src.db import News as NewsORM
 from src.db import SessionLocal
+from src.llm.embeddings import cosine_similarity, embed
 from src.models.filing import Source
 from src.models.news import NewsArticle
 
@@ -204,52 +205,31 @@ async def _fetch_google_news(ticker: str, days: int) -> list[NewsArticle]:
     return [a for a in articles if a.published_at >= cutoff]
 
 
-def _levenshtein(a: str, b: str) -> int:
-    if a == b:
-        return 0
-    if not a:
-        return len(b)
-    if not b:
-        return len(a)
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a):
-        curr = [i + 1]
-        for j, cb in enumerate(b):
-            ins = curr[j] + 1
-            dele = prev[j + 1] + 1
-            sub = prev[j] + (0 if ca == cb else 1)
-            curr.append(min(ins, dele, sub))
-        prev = curr
-    return prev[-1]
-
-
-def _title_similarity(a: str, b: str) -> float:
-    a, b = a.lower().strip(), b.lower().strip()
-    if not a or not b:
-        return 0.0
-    if a == b:
-        return 1.0
-    distance = _levenshtein(a, b)
-    return 1.0 - distance / max(len(a), len(b))
-
-
-# TODO Phase 8: switch to embedding-based dedup using Voyage embeddings
-# (cosine similarity > 0.92 on headline embeddings).
-def _dedupe(articles: list[NewsArticle]) -> tuple[list[NewsArticle], int]:
+async def _dedupe(
+    articles: list[NewsArticle],
+) -> tuple[list[NewsArticle], int]:
     by_url: dict[str, NewsArticle] = {}
     for art in articles:
         if art.url not in by_url:
             by_url[art.url] = art
 
-    kept: list[NewsArticle] = []
-    for art in by_url.values():
-        is_dup = any(
-            _title_similarity(art.headline, k.headline) > SIMILARITY_THRESHOLD
-            for k in kept
-        )
-        if not is_dup:
-            kept.append(art)
+    unique = list(by_url.values())
+    if len(unique) <= 1:
+        return unique, len(articles) - len(unique)
 
+    headlines = [a.headline for a in unique]
+    embeddings = await embed(headlines)
+
+    kept_idx: list[int] = []
+    for i, vec in enumerate(embeddings):
+        if any(
+            cosine_similarity(vec, embeddings[j]) > SIMILARITY_THRESHOLD
+            for j in kept_idx
+        ):
+            continue
+        kept_idx.append(i)
+
+    kept = [unique[i] for i in kept_idx]
     removed = len(articles) - len(kept)
     return kept, removed
 
@@ -310,7 +290,7 @@ async def _fetch_news_internal(
             f"All news providers failed for {ticker}: {failures}"
         )
 
-    deduped, removed = _dedupe(all_articles)
+    deduped, removed = await _dedupe(all_articles)
     await _persist_news(ticker, deduped)
 
     metrics = {

@@ -1,0 +1,29 @@
+news_classification:
+  model: anthropic/claude-haiku-4-5-20251001
+  fallback: openai/gpt-4o-mini
+  max_tokens: 1024
+  temperature: 0.0
+
+filings_extraction:
+  model: anthropic/claude-sonnet-4-6
+  fallback: openai/gpt-4o
+  max_tokens: 4096
+  temperature: 0.0
+
+earnings_call_analysis:
+  model: anthropic/claude-sonnet-4-6
+  fallback: openai/gpt-4o
+  max_tokens: 4096
+  temperature: 0.2
+
+devils_advocate:
+  model: anthropic/claude-opus-4-7
+  fallback: anthropic/claude-sonnet-4-6
+  max_tokens: 4096
+  temperature: 0.4
+
+synthesis:
+  model: anthropic/claude-opus-4-7
+  fallback: anthropic/claude-sonnet-4-6
+  max_tokens: 8192
+  temperature: 0.2

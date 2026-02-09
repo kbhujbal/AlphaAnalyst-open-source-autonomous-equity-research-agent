@@ -1,0 +1,37 @@
+[project]
+name = "alpha-analyst-backend"
+version = "0.1.0"
+description = "AlphaAnalyst backend service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "pydantic-settings",
+    "litellm",
+    "httpx",
+    "tenacity",
+    "sqlalchemy>=2",
+    "asyncpg",
+    "alembic",
+    "pgvector",
+    "redis",
+    "python-dotenv",
+    "pyyaml",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-mock",
+    "respx",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]

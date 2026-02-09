@@ -17,8 +17,10 @@ earnings_call_analysis:
   temperature: 0.2
 
 devils_advocate:
-  model: anthropic/claude-opus-4-7
-  fallback: anthropic/claude-sonnet-4-6
+  # Intentionally a different provider/family from `synthesis` so the
+  # contrarian critique is genuinely independent of the synthesizer.
+  model: openai/gpt-4o
+  fallback: anthropic/claude-opus-4-7
   max_tokens: 4096
   temperature: 0.4
 

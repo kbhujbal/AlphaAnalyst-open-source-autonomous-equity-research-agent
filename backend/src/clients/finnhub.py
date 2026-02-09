@@ -14,6 +14,13 @@ Endpoints used (token from settings.FINNHUB_API_KEY):
                                   quarter, revenueActual, revenueEstimate,
                                   symbol, year}, ...]}
 
+- GET https://finnhub.io/api/v1/stock/institutional-ownership?symbol={TICKER}&token={KEY}
+    Returns: {symbol, data: [{reportDate,
+                              ownership: [{name, share, change, ...}, ...]},
+                             ...]}
+    Note: Premium endpoint on Finnhub. May return 403 / empty `data` on the
+    free tier; callers must handle that gracefully.
+
 Reference: https://finnhub.io/docs/api
 """
 from __future__ import annotations
@@ -101,3 +108,8 @@ class FinnhubClient:
         if ticker:
             params["symbol"] = ticker.upper()
         return await self._get("/calendar/earnings", params)
+
+    async def institutional_ownership(self, ticker: str) -> dict[str, Any]:
+        return await self._get(
+            "/stock/institutional-ownership", {"symbol": ticker.upper()}
+        )

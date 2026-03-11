@@ -1,0 +1,59 @@
+{
+  "CoverPage": {
+    "DocumentType": "10-K",
+    "EntityRegistrantName": "Tesla, Inc."
+  },
+  "StatementsOfIncome": {
+    "Revenues": [
+      {
+        "value": "96773000000",
+        "unitRef": "usd",
+        "period": {"startDate": "2023-01-01", "endDate": "2023-12-31"}
+      },
+      {
+        "value": "81462000000",
+        "unitRef": "usd",
+        "period": {"startDate": "2022-01-01", "endDate": "2022-12-31"}
+      }
+    ],
+    "GrossProfit": [
+      {
+        "value": "17660000000",
+        "unitRef": "usd",
+        "period": {"startDate": "2023-01-01", "endDate": "2023-12-31"}
+      }
+    ],
+    "EarningsPerShareDiluted": [
+      {
+        "value": "4.30",
+        "unitRef": "usd-per-shares",
+        "period": {"startDate": "2023-01-01", "endDate": "2023-12-31"}
+      }
+    ]
+  },
+  "BalanceSheets": {
+    "Assets": [
+      {
+        "value": "106618000000",
+        "unitRef": "usd",
+        "period": {"instant": "2023-12-31"}
+      }
+    ],
+    "Liabilities": [
+      {
+        "value": "43009000000",
+        "unitRef": "usd",
+        "period": {"instant": "2023-12-31"}
+      }
+    ]
+  },
+  "StatementsOfCashFlows": {
+    "NetCashProvidedByUsedInOperatingActivities": [
+      {
+        "value": "13256000000",
+        "unitRef": "usd",
+        "period": {"startDate": "2023-01-01", "endDate": "2023-12-31"}
+      }
+    ]
+  }
+}

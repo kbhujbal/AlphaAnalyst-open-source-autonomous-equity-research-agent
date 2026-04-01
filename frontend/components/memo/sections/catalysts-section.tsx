@@ -1,3 +1,4 @@
+import { NewsTimeline } from "@/components/charts/news-timeline";
 import { RenderProse } from "@/components/memo/citation";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -18,7 +19,7 @@ function extractSentiment(text: string): number | null {
 export function CatalystsSection({ memo, tagMap }: CatalystsSectionProps) {
   const sentiment = extractSentiment(memo.recent_catalysts);
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {sentiment !== null ? (
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-muted-foreground">
@@ -39,6 +40,13 @@ export function CatalystsSection({ memo, tagMap }: CatalystsSectionProps) {
         </div>
       ) : null}
 
+      <section>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          90-day news timeline
+        </h3>
+        <NewsTimeline events={null} />
+      </section>
+
       <Separator />
 
       <section>
@@ -47,12 +55,6 @@ export function CatalystsSection({ memo, tagMap }: CatalystsSectionProps) {
         </h3>
         <RenderProse text={memo.recent_catalysts} tagMap={tagMap} />
       </section>
-
-      <p className="text-xs italic text-muted-foreground">
-        A per-event table (date / headline / category / impact) will populate
-        once the backend exposes structured news classifications in the memo
-        payload.
-      </p>
     </div>
   );
 }

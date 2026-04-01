@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 export function Header() {
   return (
-    <header className="border-b bg-background">
+    <header className="border-b bg-background print:hidden">
       <Container className="flex h-14 items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <span className="text-lg font-semibold tracking-tight">

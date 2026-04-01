@@ -1,4 +1,7 @@
+import { FinancialsChart } from "@/components/charts/financials-chart";
+import { PriceChart } from "@/components/charts/price-chart";
 import { RenderProse } from "@/components/memo/citation";
+import { Separator } from "@/components/ui/separator";
 import type { CitationData, Memo } from "@/lib/api/memo-schema";
 
 interface FinancialsSectionProps {
@@ -8,14 +11,31 @@ interface FinancialsSectionProps {
 
 export function FinancialsSection({ memo, tagMap }: FinancialsSectionProps) {
   return (
-    <div className="space-y-4">
-      <RenderProse text={memo.financial_snapshot} tagMap={tagMap} />
-      <p className="text-xs italic text-muted-foreground">
-        A multi-year table (revenue / gross / op-income / net / FCF) will
-        render here once the orchestrator persists per-period XBRL facts in
-        the response. For now the synthesizer&apos;s prose is rendered above with
-        every cited number linkable to the Sources tab.
-      </p>
+    <div className="space-y-6">
+      <section>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Annual financials
+        </h3>
+        <FinancialsChart data={null} />
+      </section>
+
+      <Separator />
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Synthesizer prose
+        </h3>
+        <RenderProse text={memo.financial_snapshot} tagMap={tagMap} />
+      </section>
+
+      <Separator />
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Price history
+        </h3>
+        <PriceChart ticker={memo.ticker} data={null} />
+      </section>
     </div>
   );
 }

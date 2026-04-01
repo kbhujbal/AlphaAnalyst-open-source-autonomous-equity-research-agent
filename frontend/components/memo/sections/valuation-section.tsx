@@ -1,3 +1,5 @@
+import { DcfSensitivityHeatmap } from "@/components/charts/dcf-sensitivity-heatmap";
+import { ToneShiftChart } from "@/components/charts/tone-shift-chart";
 import { RenderProse } from "@/components/memo/citation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -26,16 +28,22 @@ export function ValuationSection({ memo, tagMap }: ValuationSectionProps) {
 
       <section>
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          DCF sensitivity (WACC × terminal growth)
+        </h3>
+        <DcfSensitivityHeatmap data={null} />
+      </section>
+
+      <Separator />
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Earnings call tone shift
         </h3>
         <RenderProse text={memo.earnings_call_tone_shift} tagMap={tagMap} />
+        <div className="mt-4">
+          <ToneShiftChart data={null} />
+        </div>
       </section>
-
-      <p className="text-xs italic text-muted-foreground">
-        DCF method comparison and the 5×5 sensitivity heatmap render in Phase
-        16 (chart phase). The Excel export from the right rail already carries
-        a live, editable DCF model with sensitivity grid.
-      </p>
     </div>
   );
 }

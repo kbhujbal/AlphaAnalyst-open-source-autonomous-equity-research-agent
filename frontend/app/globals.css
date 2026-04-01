@@ -74,3 +74,29 @@
     @apply bg-background text-foreground;
   }
 }
+
+@media print {
+  header,
+  footer,
+  [role="tablist"],
+  .print\:hidden {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  [role="tabpanel"][hidden] {
+    /* Print all tab panels regardless of which is currently active. */
+    display: block !important;
+  }
+  a {
+    text-decoration: underline;
+  }
+  /* Avoid splitting cards / sections across pages where possible. */
+  section,
+  article,
+  .rounded-lg {
+    break-inside: avoid;
+  }
+}

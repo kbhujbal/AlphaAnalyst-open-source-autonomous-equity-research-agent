@@ -1,9 +1,6 @@
 "use client";
 
-import { Download } from "lucide-react";
-
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import {
   Tabs,
@@ -14,6 +11,7 @@ import {
 import type { MemoResponse } from "@/lib/api/client";
 import { MemoZ, buildTagMap } from "@/lib/api/memo-schema";
 
+import { ExportButtons } from "./export-buttons";
 import { CatalystsSection } from "./sections/catalysts-section";
 import { FinancialsSection } from "./sections/financials-section";
 import { RisksSection } from "./sections/risks-section";
@@ -63,14 +61,16 @@ export function MemoView({ response }: MemoViewProps) {
         </header>
 
         <Tabs defaultValue="summary">
-          <TabsList className="flex w-full flex-wrap justify-start">
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="financials">Financials</TabsTrigger>
-            <TabsTrigger value="catalysts">Catalysts</TabsTrigger>
-            <TabsTrigger value="valuation">Valuation</TabsTrigger>
-            <TabsTrigger value="risks">Risks</TabsTrigger>
-            <TabsTrigger value="sources">Sources</TabsTrigger>
-          </TabsList>
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-max">
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+              <TabsTrigger value="financials">Financials</TabsTrigger>
+              <TabsTrigger value="catalysts">Catalysts</TabsTrigger>
+              <TabsTrigger value="valuation">Valuation</TabsTrigger>
+              <TabsTrigger value="risks">Risks</TabsTrigger>
+              <TabsTrigger value="sources">Sources</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="summary" className="pt-6">
             <SummarySection memo={memo} tagMap={tagMap} />
@@ -120,28 +120,10 @@ export function MemoView({ response }: MemoViewProps) {
             <div className="font-medium">{response.llm_calls}</div>
           </div>
         </div>
-        <div className="space-y-2">
-          <Button variant="outline" className="w-full" asChild>
-            <a
-              href={absoluteApiUrl(response.exports.pdf)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-              Download PDF
-            </a>
-          </Button>
-          <Button variant="outline" className="w-full" asChild>
-            <a
-              href={absoluteApiUrl(response.exports.excel)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-              Download Excel
-            </a>
-          </Button>
-        </div>
+        <ExportButtons
+          pdfHref={absoluteApiUrl(response.exports.pdf)}
+          excelHref={absoluteApiUrl(response.exports.excel)}
+        />
       </aside>
     </div>
   );

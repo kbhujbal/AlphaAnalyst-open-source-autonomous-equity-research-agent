@@ -1,3 +1,7 @@
+# Local-only files (do not push to GitHub)
+CLAUDE.md
+scripts/
+
 # Environment
 .env
 .env.local

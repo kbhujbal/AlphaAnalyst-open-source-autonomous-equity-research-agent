@@ -138,6 +138,7 @@ shows step-by-step progress, and renders the memo when the pipeline finishes.
 Download buttons in the right rail stream the PDF / live-formula Excel from
 the backend.
 
+<!--
 ## Running the eval suite
 
 The eval suite is the project's truth check. It hits **real** APIs (SEC
@@ -167,7 +168,9 @@ The CLI exits non-zero if any of these thresholds breaches:
 Ground-truth facts live in `backend/tests/eval/dataset.py` and cite the
 exact 10-K Item where each number appears. If a number drifts because the
 underlying filing was revised, fix the dataset, not the pipeline.
+-->
 
+<!--
 ## Sample memo (illustrative)
 
 The full output is a JSON object validated against the Memo schema in
@@ -211,7 +214,9 @@ Citations
 The actual JSON shape is defined by the `Memo` Pydantic model and is what
 the frontend consumes; the prose above is what the synthesizer renders into
 the PDF / web view.
+-->
 
+<!--
 ## Known limitations
 
 This is a v0.1.0 — the pipeline runs end-to-end and produces a memo, but
@@ -237,6 +242,7 @@ several rough edges remain:
   ADRs of European companies) will produce confused output.
 - **No real-time streaming**: news sentiment is computed at memo-generation
   time; no continuous re-evaluation.
+-->
 
 ## Production roadmap
 

@@ -269,10 +269,6 @@ git tag -a v0.1.0 -m "v0.1.0 — eval thresholds met"
 git push --tags
 ```
 
-## License
-
-Apache-2.0 (see LICENSE).
-
 ---
 
 **A note on the eval suite philosophy.** Every claim in this README — the

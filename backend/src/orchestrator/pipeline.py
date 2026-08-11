@@ -37,6 +37,7 @@ from src.fetchers.filings import (
 )
 from src.fetchers.indexer import index_filing, index_transcript
 from src.fetchers.macro import fetch_macro_snapshot
+from src.fetchers.market_cap import fetch_market_caps
 from src.fetchers.market_data import fetch_fundamentals, fetch_peers, fetch_prices
 from src.fetchers.news import fetch_news
 from src.fetchers.transcripts import fetch_recent_transcripts
@@ -149,7 +150,17 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
                 historical = await load_company_observations(peer.ticker)
                 selected = list(snapshot.observations.values())
                 contexts = {(o.metric, o.period.end) for o in selected}
-                peer_facts[peer.ticker] = [o for o in historical if (o.metric, o.period.end) not in contexts] + selected
+                data = [o for o in historical if (o.metric, o.period.end) not in contexts] + selected
+                # Fresh supported cap batches replace all archived/TTM caps;
+                # a failed refresh never silently falls back to stale context.
+                data = [o for o in data if o.metric != "market_cap"]
+                try:
+                    batch = await fetch_market_caps(peer.ticker)
+                    errors.extend(f"Comparable peer {peer.ticker}: {warning}" for warning in batch.warnings)
+                    data += batch.observations
+                except Exception as exc:
+                    errors.append(f"Comparable peer {peer.ticker} market cap unavailable: {public_diagnostic(str(exc))}")
+                peer_facts[peer.ticker] = data
             except Exception as exc:
                 errors.append(f"Comparable peer {peer.ticker} unavailable: {public_diagnostic(str(exc))}")
         traces, warnings = build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts)

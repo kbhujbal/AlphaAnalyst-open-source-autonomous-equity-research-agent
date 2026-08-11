@@ -56,20 +56,31 @@ def build_research_calculations(ticker: str, facts: list[FinancialObservation], 
         traces.append(calculate("dcf-fcff-v1", ticker, bindings, observations, scenario=scenario))
     except CalculationUnavailable as exc:
         warnings.append(f"DCF unavailable: {exc}")
-    # A separate trace per date prevents mixing market-cap snapshots. Peers
-    # excluded from any metric are reported, rather than padded with proxies.
+    # Choose a common date from supported peer histories. Prefer the largest
+    # eligible cohort, then its most recent date. Never mix dates in a median.
     by_date = {}
     for peer, items in sorted((peer_facts or {}).items()):
         if peer == ticker:
             continue
-        try:
-            cap = _select(items, "market_cap")
-            peer_revenue = _select([o for o in items if o.period.basis == "annual"], "revenue", revenue.period.end)
-            bindings = {**base, f"peer_cap:{peer}": [cap.observation_id], f"peer_revenue:{peer}": [peer_revenue.observation_id]}
-            calculate("comps-v1", ticker, bindings, observations, valuation_date=cap.period.end)
-            by_date.setdefault(cap.period.end, {}).update({k: v for k, v in bindings.items() if k != "revenue"})
-        except CalculationUnavailable as exc:
-            warnings.append(f"Comparable peer {peer} excluded: {exc}")
+        dates = sorted({o.period.end for o in items if o.metric == "market_cap" and o.period.kind == "instant" and o.period.end})
+        if not dates:
+            warnings.append(f"Comparable peer {peer} excluded: no dated market capitalization")
+        for as_of in dates:
+            try:
+                cap = _select(items, "market_cap", as_of)
+                peer_revenue = _select([o for o in items if o.period.basis == "annual"], "revenue", revenue.period.end)
+                bindings = {**base, f"peer_cap:{peer}": [cap.observation_id], f"peer_revenue:{peer}": [peer_revenue.observation_id]}
+                calculate("comps-v1", ticker, bindings, observations, valuation_date=as_of)
+                by_date.setdefault(as_of, {}).update({k: v for k, v in bindings.items() if k != "revenue"})
+            except CalculationUnavailable as exc:
+                warnings.append(f"Comparable peer {peer} at {as_of} excluded: {exc}")
+    if by_date:
+        chosen = max(by_date, key=lambda day: (sum(role.startswith("peer_cap:") for role in by_date[day]), day))
+        selected = by_date[chosen]
+        for peer in sorted(peer_facts or {}):
+            if peer != ticker and f"peer_cap:{peer}" not in selected:
+                warnings.append(f"Comparable peer {peer} excluded from selected common market-cap date {chosen}")
+        by_date = {chosen: selected}
     for as_of, peer_bindings in sorted(by_date.items()):
         bindings = {**base, **peer_bindings}
         pe_bindings = {}

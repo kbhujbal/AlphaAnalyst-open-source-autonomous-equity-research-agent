@@ -331,8 +331,9 @@ Initial coverage is deliberately explicit:
 Ratios are stored as fractions: `0.10` means 10%, rather than ten percent being
 silently converted to a different scale. Source revisions are not averaged;
 ambiguous historical versions require explicit selection. Automatic peer fetches
-are limited to five and excluded peers receive reasons. Different capitalization
-dates form separate traces, never a blended median. Market cap / operating cash
+are limited to five and excluded peers receive reasons. Comparables select one common capitalization date: the largest eligible peer
+cohort, then the most recent date for that cohort. Different dates are never
+blended into one median. Market cap / operating cash
 flow is no longer described as EV/EBITDA, and no EV/EBITDA estimate is generated.
 
 The DCF no longer derives shares from market cap divided by an unrelated price,
@@ -388,10 +389,81 @@ durable records can be reloaded internally with `calculation_store.load_record`.
 An authenticated historical-record browsing API remains future work.
 
 Pending for this stage: live PostgreSQL migration/integration tests and provider
-smoke tests; a verified dated/currency-aware market-cap ingestion path (the existing
-TTM feed cannot establish that context, so normal live comparables remain withheld);
+smoke tests; broader market-cap coverage beyond the recent-date path below;
 financial expert review and a broader golden-company corpus; multi-year CAGR and
 additional profitability/leverage/return ratios; TTM and differing fiscal calendars;
 actual driver-based FCFF forecasts and reviewed WACC estimation; EV/EBITDA using real
 enterprise value and EBITDA inputs; FX/security-master support; scenario comparison,
 restatement selection, retention/access controls, and editable recalculating Excel.
+
+
+## Recent dated market capitalization for comparables
+
+The live comparables pipeline now fetches FMP's
+[historical market-cap records](https://site.financialmodelingprep.com/developer/docs/stable/historical-market-cap)
+and a separately retained
+[current listing profile](https://site.financialmodelingprep.com/developer/docs/stable/profile-symbol).
+The dated endpoint supplies symbol, date and market cap; the profile supplies quote
+currency, exchange and issuer/listing metadata. Statement reporting currency and
+undated TTM market cap are never substitutes for quote-currency/date evidence.
+
+The supported initial contract is intentionally narrow:
+
+- Dates must come from the original cap row, be strictly before the UTC capture
+  date, and lie within the preceding seven calendar days. Same-day rows are withheld
+  to avoid presenting an incomplete session as a completed-date snapshot. There is
+  no exchange-calendar claim, and this is not an intraday valuation feed.
+- Quote profiles must identify the exact symbol, a supported major currency,
+  exchange and issuer identifier, confirm active trading, and explicitly classify
+  the listing as neither an ADR, ETF nor fund. Missing/ambiguous metadata is rejected.
+- When the cap row lacks currency, implicit mapping from the quote profile is
+  supported only for USD listings on NASDAQ, NYSE or AMEX. Other exchange/currency
+  combinations require an explicit, matching currency on the cap row. Minor units
+  such as GBp/GBX and unrecognized currency codes are not relabeled as major units.
+- Profiles must be captured on the cap retrieval's UTC date. The immutable document
+  ID includes the daily profile capture identity. Current profile currency is a
+  disclosed recent-date mapping policy, **not proof of historical currency validity**
+  or a full security master. Arbitrary historical backtests are unsupported.
+- Values must be finite and positive. Identical duplicate rows deduplicate;
+  conflicting records for the same symbol/date are withheld. API errors and
+  unsupported data produce peer-specific warnings, not invented values.
+
+`FinancialObservation.market_cap_context` links the currency policy to the exact
+profile document ID, hash, source URL and capture timestamp. Its contents participate
+in the observation identity. Source verification independently reloads that document,
+replays normalization from the original cap row and profile, and requires a matching
+value, symbol, date, unit, currency and profile binding. Both source records contribute
+exact passages to the calculation trace. Missing or changed currency evidence fails
+publication. Trace downloads retain the context, and the UI explains the currency
+basis separately from the statement's reporting currency. Offline replay with
+`--documents` verifies the profile link as well as the primary cap payload.
+
+Recent batches cache for one hour in UTC-date-scoped keys and must still pass date
+freshness checks on reads. Fresh supported batches replace historical/TTM cap
+candidates in the live peer path. A failed refresh does not revive old archived
+values. With multiple cap dates, the builder chooses the largest eligible cohort's
+latest common date and discloses peers excluded from that date. Matching statement
+currency, fiscal intervals and filing availability remain required by `comps-v1`.
+Neither currency conversion nor annual/TTM mixing happens implicitly.
+
+No database migration is added for this stage: the context fits the existing
+observation JSON and profile text uses the existing source archive. Existing
+observation IDs, immutable record JSON and old calculation replay remain compatible
+when no market-cap context is present. Prior migrations through `0005` are still
+required. Start a fresh analysis after setting `FMP_API_KEY` and confirming account
+access to the two stable endpoints; live analysis also needs its existing providers,
+PostgreSQL and Redis.
+
+Validation includes provider HTTP fixtures through dated-cap normalization,
+independent archive reload, peer date selection and published calculation claims;
+tampered/missing profile rejection; provider failures and stale caches; immutable
+legacy compatibility; offline replay; and a PostgreSQL persistence test. Real account
+smoke tests remain pending because no FMP credential is configured in this checkout.
+PostgreSQL integration tests remain pending without a running test database.
+
+Remaining work: actual provider/account validation and independent numerical
+cross-checks; reviewed currency methodology beyond the supported USD listing path;
+historical effective-dated currencies, security/issuer identity and share-class
+handling; ADR ratios and FX; TTM and differing fiscal calendars; exchange calendars,
+corporate actions and provider corrections. Current-profile provenance does not
+establish source truth or historical investability.

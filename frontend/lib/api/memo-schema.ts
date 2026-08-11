@@ -52,6 +52,10 @@ export const FinancialObservationZ = z.object({
   }),
   payload_hash: z.string().regex(/^[a-f0-9]{64}$/),
   observation_id: z.string().regex(/^[a-f0-9]{64}$/),
+  market_cap_context: z.object({
+    basis: z.literal("current-profile-recent-7d-v1"), profile_document_id: z.string(), profile_hash: z.string(),
+    profile_source_url: z.string().url(), profile_retrieved_at: z.string(),
+  }).nullable().optional(),
   scale: z.literal(1), reported_decimals: z.string().nullable().optional(),
   quality_flags: z.array(z.string()).optional(),
 }) satisfies z.ZodType<components["schemas"]["FinancialObservation"]>;

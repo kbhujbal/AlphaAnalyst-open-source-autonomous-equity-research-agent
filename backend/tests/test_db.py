@@ -204,3 +204,23 @@ async def test_calculation_records_retain_replayable_source_versions(db_session,
     await db_session.commit()
     with pytest.raises(ValueError, match="integrity"):
         await calculation_store.load_record(trace.calculation_id)
+
+
+async def test_market_cap_context_survives_immutable_storage_and_source_reload(db_session, monkeypatch):
+    from src.fetchers import evidence_store, financial_store
+    from src.fetchers.market_cap import normalize_market_caps
+    from src.evidence_verification import verify_fact_sources
+    from src.claim_verification import VerifiedFact
+    from tests.test_market_cap import NOW, document, rows
+    session_factory = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    for module in (financial_store, evidence_store):
+        monkeypatch.setattr(module, "SessionLocal", session_factory)
+    profile = await evidence_store.save_document(document())
+    cap = normalize_market_caps("P1", rows(), profile, NOW).observations[0]
+    await financial_store.persist_observations([cap, cap])
+    loaded = await evidence_store.load_observations({cap.observation_id})
+    assert loaded[cap.observation_id].market_cap_context == cap.market_cap_context
+    fact = VerifiedFact(tag="F1", text="", source_type="fact", source_id=cap.source.url, observation=cap)
+    assert await verify_fact_sources([fact], "P1") == []
+    assert fact.verified
+    assert any('"currency":"USD"' in p.text for p in fact.passages)

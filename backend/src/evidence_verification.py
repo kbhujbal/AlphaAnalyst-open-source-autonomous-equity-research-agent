@@ -31,9 +31,11 @@ def record_fields(document: CapturedDocument, raw: dict, keys: list[str]):
 
 
 async def verify_fact_sources(facts: list[VerifiedFact], ticker: str) -> list[str]:
-    documents = await evidence_store.load_documents({p.document_id for f in facts for p in f.passages})
     observations = await evidence_store.load_observations({f.observation.observation_id for f in facts if f.observation})
     boundaries = await evidence_store.load_boundary_records({o.period.start_evidence.payload_hash for o in observations.values() if o.period.start_evidence})
+    document_ids = {p.document_id for f in facts for p in f.passages}
+    document_ids.update(o.market_cap_context.profile_document_id for o in observations.values() if o.market_cap_context)
+    documents = await evidence_store.load_documents(document_ids)
     warnings = []
     for fact in facts:
         fact.verified = False
@@ -45,11 +47,18 @@ async def verify_fact_sources(facts: list[VerifiedFact], ticker: str) -> list[st
             try:
                 observation_row(original)
                 document = record_document(original, original.raw_payload, original.observation_id)
-                keys = ["value", "unitRef", "unit", "period"] if original.source.provider == "sec-api" else [original.tag, "reportedCurrency", "date", "period", "fiscalYear", "calendarYear"]
+                keys = ["value", "unitRef", "unit", "period"] if original.source.provider == "sec-api" else [original.tag, "symbol", "currency", "reportedCurrency", "date", "period", "fiscalYear", "calendarYear"]
                 document = await evidence_store.save_document(document)
                 passages = record_fields(document, original.raw_payload, keys)
                 if not passages:
                     raise ValueError("Source record has no matching fields")
+                if original.market_cap_context is not None or original.source.url.startswith("https://financialmodelingprep.com/stable/historical-market-capitalization"):
+                    from src.fetchers.market_cap import verify_market_cap_context
+                    context = original.market_cap_context
+                    profile_document = documents.get(context.profile_document_id) if context else None
+                    verify_market_cap_context(original, profile_document)
+                    passages += record_fields(profile_document, json.loads(profile_document.text),
+                        ["symbol", "currency", "exchange", "isin", "cik", "isActivelyTrading", "isAdr", "isEtf", "isFund"])
                 boundary = original.period.start_evidence
                 if boundary is not None:
                     raw = boundaries.get(boundary.payload_hash)

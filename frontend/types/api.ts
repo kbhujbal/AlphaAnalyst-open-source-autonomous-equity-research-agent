@@ -377,6 +377,7 @@ export interface components {
             source: components["schemas"]["ObservationSource"];
             /** Payload Hash */
             payload_hash: string;
+            market_cap_context?: components["schemas"]["MarketCapContext"] | null;
             /** Reported Decimals */
             reported_decimals?: string | null;
             /**
@@ -429,6 +430,26 @@ export interface components {
             error?: string | null;
             /** Warnings */
             warnings?: string[];
+        };
+        /** MarketCapContext */
+        MarketCapContext: {
+            /**
+             * Basis
+             * @default current-profile-recent-7d-v1
+             * @constant
+             */
+            basis: "current-profile-recent-7d-v1";
+            /** Profile Document Id */
+            profile_document_id: string;
+            /** Profile Hash */
+            profile_hash: string;
+            /** Profile Source Url */
+            profile_source_url: string;
+            /**
+             * Profile Retrieved At
+             * Format: date-time
+             */
+            profile_retrieved_at: string;
         };
         /** Memo */
         Memo: {

@@ -196,6 +196,7 @@ def _calculate(recipe, ticker, bindings, observations, scenario, valuation_date)
         available_at_market_date(revenue)
         caps = sorted(role for role in bindings if role.startswith("peer_cap:"))
         ps, pe = [], []
+        currency_notes = set()
         for role in caps:
             company = role.split(":", 1)[1]
             if company == ticker:
@@ -204,6 +205,8 @@ def _calculate(recipe, ticker, bindings, observations, scenario, valuation_date)
             _instant(cap, "market_cap", company, currency, valuation_date)
             if cap.value <= 0:
                 raise CalculationUnavailable("Peer capitalization must be positive")
+            if cap.market_cap_context:
+                currency_notes.add(f"{company}: quote currency linked to current listing profile captured {cap.market_cap_context.profile_retrieved_at.isoformat()}; recent-date policy, not historical currency certification")
             peer_revenue = get(f"peer_revenue:{company}", "revenue", company)
             _annual(peer_revenue)
             available_at_market_date(peer_revenue)
@@ -239,6 +242,7 @@ def _calculate(recipe, ticker, bindings, observations, scenario, valuation_date)
             g.op("median_pe", "median", pe, "ratio")
             g.op("implied_cap_pe", "multiply", ["median_pe", "target_income"], currency)
             outputs.update(median_pe="median_pe", implied_cap_pe="implied_cap_pe")
+        warnings += sorted(currency_notes)
         warnings += ["Peer selection is an analyst judgment; peer medians are not fair-value facts", "Strict common currency, fiscal interval and market-cap date; no FX or TTM substitutions", "Market capitalization / operating cash flow is not EV/EBITDA and is not calculated"]
     elif recipe != "growth-v1" and recipe not in {"net-margin-v1", "ocf-margin-v1"}:
         raise CalculationUnavailable("Unknown calculation recipe")

@@ -16,6 +16,9 @@ def validate_record(record):
         o = source.observation
         if not any(p.source_id == o.observation_id and p.document_hash == o.payload_hash and p.source_url == o.source.url and p.scope == "provider_record" for p in source.passages):
             raise ValueError("Calculation source is not bound to its retained provider record")
+        context = o.market_cap_context
+        if context and not any(p.document_id == context.profile_document_id and p.document_hash == context.profile_hash and p.source_url == context.profile_source_url and p.retrieved_at == context.profile_retrieved_at for p in source.passages):
+            raise ValueError("Calculation quote currency is not covered by retained profile evidence")
     replay(record.trace, observations)
 
 

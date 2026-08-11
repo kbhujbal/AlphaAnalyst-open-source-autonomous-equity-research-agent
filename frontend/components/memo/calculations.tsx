@@ -22,6 +22,7 @@ export function Calculations({ records }: { records: Record[] }) {
         <div className="mt-3 space-y-2">{sources.map((source, index) => <div key={source.observation.observation_id} className="break-all">
           {source.observation.ticker} {source.observation.metric}: {source.observation.value} {source.observation.unit}; {source.observation.period.start ?? "as of"} — {source.observation.period.end}
           <Citation id={`Input ${index + 1}`} citation={{ source_type: "fact", source_id: source.observation.source.url, snippet: source.passages.map(p => p.text).join("\n\n"), passages: source.passages, observation_id: source.observation.observation_id }} />
+          {source.observation.market_cap_context && <p className="text-xs text-muted-foreground">Quote currency from current listing profile captured {source.observation.market_cap_context.profile_retrieved_at}; limited to recent market dates. This is separate from financial reporting currency.</p>}
           <p className="text-xs text-muted-foreground">{source.observation.observation_id}</p>
         </div>)}</div>
         <details className="mt-3"><summary className="cursor-pointer">Formula steps and sensitivity cells ({trace.steps.length})</summary>

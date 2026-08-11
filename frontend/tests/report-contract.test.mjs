@@ -93,3 +93,13 @@ test("calculation contracts retain exact decimals, recipe identities and source 
   record.trace.recipe = "unregistered-formula";
   assert.equal(MemoZ.safeParse({ ...demo.sections, calculations: [record] }).success, false);
 });
+
+
+test("market-cap currency evidence survives runtime validation and trace downloads", async () => {
+  const { FinancialObservationZ } = await import("../lib/api/memo-schema.ts");
+  const record = JSON.parse(readFileSync(new URL("./fixtures/calculation-record.json", import.meta.url), "utf8"));
+  const context = { basis: "current-profile-recent-7d-v1", profile_document_id: "a".repeat(64), profile_hash: "b".repeat(64), profile_source_url: "https://financialmodelingprep.com/stable/profile?symbol=TEST", profile_retrieved_at: "2025-03-05T12:00:00Z" };
+  const cap = FinancialObservationZ.parse({ ...record.sources[0].observation, metric: "market_cap", tag: "marketCap", period: { kind: "instant", end: "2025-03-04", basis: "unknown", start_method: "unknown" }, market_cap_context: context });
+  assert.deepEqual(cap.market_cap_context, context);
+  assert.equal(FinancialObservationZ.safeParse({ ...cap, market_cap_context: { ...context, basis: "assume-reporting-currency" } }).success, false);
+});

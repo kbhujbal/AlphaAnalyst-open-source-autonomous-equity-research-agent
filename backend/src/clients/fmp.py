@@ -124,6 +124,12 @@ class FmpClient:
     async def key_metrics_ttm(self, ticker: str) -> list[dict[str, Any]]:
         return await self._get(f"/api/v3/key-metrics-ttm/{ticker.upper()}")
 
+    async def company_profile(self, ticker: str) -> list[dict[str, Any]]:
+        return await self._get("/stable/profile", {"symbol": ticker.upper()})
+
+    async def historical_market_cap(self, ticker: str) -> list[dict[str, Any]]:
+        return await self._get("/stable/historical-market-capitalization", {"symbol": ticker.upper()})
+
     async def peers(self, ticker: str) -> list[dict[str, Any]]:
         return await self._get(
             "/api/v4/stock_peers", {"symbol": ticker.upper()}

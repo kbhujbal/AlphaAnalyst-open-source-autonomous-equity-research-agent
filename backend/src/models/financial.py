@@ -72,6 +72,21 @@ class ObservationSource(Source):
         return value
 
 
+class MarketCapContext(BaseModel):
+    basis: Literal["current-profile-recent-7d-v1"] = "current-profile-recent-7d-v1"
+    profile_document_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    profile_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    profile_source_url: str
+    profile_retrieved_at: datetime
+
+    @field_validator("profile_retrieved_at")
+    @classmethod
+    def aware_timestamp(cls, value):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Quote profile timestamps require an explicit timezone")
+        return value
+
+
 class FinancialObservation(BaseModel):
     ticker: str
     metric: str
@@ -84,6 +99,7 @@ class FinancialObservation(BaseModel):
     source: ObservationSource
     payload_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     raw_payload: dict[str, Any] = Field(default_factory=dict, exclude=True)
+    market_cap_context: MarketCapContext | None = Field(default=None, exclude_if=lambda value: value is None)
     reported_decimals: str | None = None
     scale: Literal[1] = 1
     quality_flags: list[str] = Field(default_factory=list)
@@ -108,6 +124,8 @@ class FinancialObservation(BaseModel):
             "payload_hash": self.payload_hash,
             "filing_date": self.source.filing_date, "accepted_at": self.source.accepted_at,
         }
+        if self.market_cap_context is not None:
+            identity["market_cap_context"] = self.market_cap_context.model_dump(mode="json")
         return payload_hash(identity)
 
 

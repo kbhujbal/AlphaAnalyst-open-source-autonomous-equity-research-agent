@@ -35,7 +35,11 @@ def main():
             primary = next((documents[p.document_id] for p in source.passages if p.source_id == source.observation.observation_id and p.scope == "provider_record"), None)
             if primary is None:
                 raise ValueError("Original financial provider record is absent")
-            observation_row(source.observation.model_copy(update={"raw_payload": json.loads(primary.text)}))
+            observation = source.observation.model_copy(update={"raw_payload": json.loads(primary.text)})
+            observation_row(observation)
+            if observation.market_cap_context:
+                from src.fetchers.market_cap import verify_market_cap_context
+                verify_market_cap_context(observation, documents.get(observation.market_cap_context.profile_document_id))
     values = {step.node: step for step in trace.steps}
     print(json.dumps({"calculation_id": trace.calculation_id, "recipe": trace.recipe,
                       "validation": "arithmetic and captured passages" if args.documents else "arithmetic only; original sources were not independently reloaded",

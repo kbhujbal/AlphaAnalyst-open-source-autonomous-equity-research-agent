@@ -998,6 +998,16 @@
             "pattern": "^[a-f0-9]{64}$",
             "title": "Payload Hash"
           },
+          "market_cap_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarketCapContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reported_decimals": {
             "anyOf": [
               {
@@ -1149,6 +1159,43 @@
           "progress_pct"
         ],
         "title": "JobStatus"
+      },
+      "MarketCapContext": {
+        "properties": {
+          "basis": {
+            "type": "string",
+            "const": "current-profile-recent-7d-v1",
+            "title": "Basis",
+            "default": "current-profile-recent-7d-v1"
+          },
+          "profile_document_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Profile Document Id"
+          },
+          "profile_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Profile Hash"
+          },
+          "profile_source_url": {
+            "type": "string",
+            "title": "Profile Source Url"
+          },
+          "profile_retrieved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Profile Retrieved At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile_document_id",
+          "profile_hash",
+          "profile_source_url",
+          "profile_retrieved_at"
+        ],
+        "title": "MarketCapContext"
       },
       "Memo": {
         "properties": {

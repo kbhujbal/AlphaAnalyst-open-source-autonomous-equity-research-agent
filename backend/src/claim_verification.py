@@ -84,11 +84,9 @@ def verify_claim(claim: DraftClaim, facts: dict[str, VerifiedFact], ordinal: int
         audit.calculation_id = trace.calculation_id
         audit.calculation_output = assertion.output
         label = "Scenario calculation" if trace.scenario else "Calculated"
-        period = trace.periods.get(trace.ticker) or next(source.observation.period for source in record.sources if source.observation.observation_id == trace.bindings["revenue"][0])
-        period_label = "TTM" if period.basis == "ttm" else "fiscal"
-        as_of_label = "as of" if trace.recipe == "ttm-income-v1" else "market caps as of"
-        date_label = f"; {as_of_label} {trace.valuation_date}" if trace.valuation_date else ""
-        audit.rendered_text = f"{label} — {trace.ticker} {assertion.output.replace('_', ' ')}: {step.value} {step.unit} ({period_label} {period.start} to {period.end}{date_label}; {trace.recipe})."
+        period = next(source.observation.period for source in record.sources if source.observation.observation_id == trace.bindings["revenue"][0])
+        date_label = f"; market caps as of {trace.valuation_date}" if trace.valuation_date else ""
+        audit.rendered_text = f"{label} — {trace.ticker} {assertion.output.replace('_', ' ')}: {step.value} {step.unit} (fiscal {period.start} to {period.end}{date_label}; {trace.recipe})."
         audit.status = "verified"
     elif claim.kind == "financial":
         if claim.text.strip():

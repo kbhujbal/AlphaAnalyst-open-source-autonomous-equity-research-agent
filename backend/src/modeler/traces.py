@@ -80,9 +80,6 @@ def _instant(obs, metric, ticker, currency, as_of):
 
 def calculate(recipe: str, ticker: str, bindings: dict[str, list[str]], observations: dict[str, FinancialObservation], *, scenario: DCFScenario | None = None, valuation_date: date | None = None) -> CalculationTrace:
     with localcontext(CONTEXT):
-        if recipe in {"ttm-income-v1", "comps-ttm-v1"}:
-            from src.modeler.ttm import calculate_ttm
-            return calculate_ttm(recipe, ticker, bindings, observations, scenario, valuation_date)
         return _calculate(recipe, ticker, bindings, observations, scenario, valuation_date)
 
 

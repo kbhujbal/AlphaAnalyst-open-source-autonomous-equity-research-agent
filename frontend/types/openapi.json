@@ -463,9 +463,7 @@
               "net-margin-v1",
               "ocf-margin-v1",
               "dcf-fcff-v1",
-              "comps-v1",
-              "ttm-income-v1",
-              "comps-ttm-v1"
+              "comps-v1"
             ],
             "title": "Recipe"
           },
@@ -522,13 +520,6 @@
           "currency": {
             "type": "string",
             "title": "Currency"
-          },
-          "periods": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/ReportingPeriod"
-            },
-            "type": "object",
-            "title": "Periods"
           },
           "warnings": {
             "items": {
@@ -1561,7 +1552,6 @@
             "enum": [
               "reported",
               "prior_annual_end",
-              "prior_quarter_end",
               "unknown"
             ],
             "title": "Start Method",

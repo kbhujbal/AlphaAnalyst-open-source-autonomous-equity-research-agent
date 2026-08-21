@@ -202,7 +202,7 @@ export interface components {
              * Recipe
              * @enum {string}
              */
-            recipe: "growth-v1" | "net-margin-v1" | "ocf-margin-v1" | "dcf-fcff-v1" | "comps-v1" | "ttm-income-v1" | "comps-ttm-v1";
+            recipe: "growth-v1" | "net-margin-v1" | "ocf-margin-v1" | "dcf-fcff-v1" | "comps-v1";
             /** Ticker */
             ticker: string;
             /** Bindings */
@@ -220,10 +220,6 @@ export interface components {
             };
             /** Currency */
             currency: string;
-            /** Periods */
-            periods?: {
-                [key: string]: components["schemas"]["ReportingPeriod"];
-            };
             /** Warnings */
             warnings?: string[];
             /** Calculation Id */
@@ -577,7 +573,7 @@ export interface components {
              * @default unknown
              * @enum {string}
              */
-            start_method: "reported" | "prior_annual_end" | "prior_quarter_end" | "unknown";
+            start_method: "reported" | "prior_annual_end" | "unknown";
             start_evidence?: components["schemas"]["BoundaryEvidence"] | null;
         };
         /** SourcePassage */

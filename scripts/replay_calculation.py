@@ -37,11 +37,6 @@ def main():
                 raise ValueError("Original financial provider record is absent")
             observation = source.observation.model_copy(update={"raw_payload": json.loads(primary.text)})
             observation_row(observation)
-            if observation.period.start_method == "prior_quarter_end":
-                from src.fetchers.quarterly import verify_quarter_source
-                boundary = observation.period.start_evidence
-                previous = next((doc for doc in documents.values() if boundary and doc.content_hash == boundary.payload_hash and doc.ticker == observation.ticker and doc.scope == "provider_record"), None)
-                verify_quarter_source(observation, json.loads(previous.text) if previous else None)
             if observation.market_cap_context:
                 from src.fetchers.market_cap import verify_market_cap_context
                 verify_market_cap_context(observation, documents.get(observation.market_cap_context.profile_document_id))

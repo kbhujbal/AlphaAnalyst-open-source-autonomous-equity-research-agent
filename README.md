@@ -391,7 +391,7 @@ An authenticated historical-record browsing API remains future work.
 Pending for this stage: live PostgreSQL migration/integration tests and provider
 smoke tests; broader market-cap coverage beyond the recent-date path below;
 financial expert review and a broader golden-company corpus; multi-year CAGR and
-additional profitability/leverage/return ratios; broader TTM coverage and financial review;
+additional profitability/leverage/return ratios; TTM and differing fiscal calendars;
 actual driver-based FCFF forecasts and reviewed WACC estimation; EV/EBITDA using real
 enterprise value and EBITDA inputs; FX/security-master support; scenario comparison,
 restatement selection, retention/access controls, and editable recalculating Excel.
@@ -464,88 +464,6 @@ PostgreSQL integration tests remain pending without a running test database.
 Remaining work: actual provider/account validation and independent numerical
 cross-checks; reviewed currency methodology beyond the supported USD listing path;
 historical effective-dated currencies, security/issuer identity and share-class
-handling; ADR ratios and FX; broader TTM/calendar coverage; exchange calendars,
+handling; ADR ratios and FX; TTM and differing fiscal calendars; exchange calendars,
 corporate actions and provider corrections. Current-profile provenance does not
 establish source truth or historical investability.
-
-
-## TTM financials and differing fiscal calendars
-
-The live calculation pipeline now fetches discrete quarterly income statements from
-FMP's [stable income-statement endpoint](https://site.financialmodelingprep.com/developer/docs/stable/income-statement)
-with `period=quarter&limit=12`. The existing annual snapshot remains separate.
-New recipes `ttm-income-v1` and `comps-ttm-v1` produce source-linked revenue,
-net income, net margin, P/S, P/E and implied market capitalization. TTM totals
-are calculated trace nodes, never fabricated provider-reported observations.
-
-Quarterly normalization requires the exact symbol, reported currency, fiscal year,
-Q1–Q4 label and end date. A quarter start is the immediately preceding fiscal
-quarter's end plus one day, including Q4-to-Q1 fiscal-year rollover. The predecessor
-must be unambiguous and the interval 75–105 days. Its original payload hash is
-retained in `period.start_evidence`; `start_method=prior_quarter_end` identifies this
-derivation. Missing/conflicting predecessors leave the start unknown and exclude
-the observation from TTM assembly. Independent source verification replays the
-quarter normalization against the retained original row and predecessor, not just
-the displayed date. Quarterly revenue and net income are normalized; EPS, annual
-rows and cumulative/YTD cash flows are not summed.
-
-Each TTM needs exactly four distinct, chronological, complete, contiguous quarters
-with one currency and no segment dimensions. Gaps, overlaps, duplicates, unknown
-starts, annual/YTD substitutions and ambiguous source versions are rejected. The
-full interval must span 350–380 days, accommodating calendar and 52/53-week years.
-Revenue and earnings must use matching quarter boundaries and filing versions.
-Each filing must have known availability on/before the explicit as-of date;
-future or unknown availability cannot supply a TTM denominator. A trace is replayed
-from all retained quarter observations and their source passages before publication.
-
-`comps-ttm-v1` keeps one market-cap date but allows companies' actual trailing windows
-to differ under a visible policy:
-
-| Check | Initial bound |
-| --- | --- |
-| Age of each TTM end at the market-cap date | At most 185 calendar days |
-| Difference between target and peer TTM ends | At most 100 calendar days |
-| Difference between their window lengths | At most 7 days |
-| Currency | Identical statement and market-cap currencies; no FX inference |
-
-This supports differing fiscal quarter/year ends without pretending all companies
-reported over the same dates. The policy is a comparison tolerance, not calendarized
-financials: there is no interpolation or proration, and different seasonal/economic
-windows remain a disclosed limitation. Every company's actual start/end is retained
-in `CalculationTrace.periods`, displayed in the interface and PDF, and included in
-trace downloads and offline replay. Server-rendered claims use the entire target
-TTM window, never the first component quarter's dates.
-
-The selector uses the most recent available four-quarter set at each candidate
-market-cap date. It does not silently resolve conflicting versions or skip an
-incomplete latest quarter to find an older convenient window. Peer capitalization
-dates still use the largest eligible cohort, then its latest common date. A valid
-TTM cohort is preferred over annual comparables; annual and TTM multiples are never
-combined into a median. If TTM inputs are unavailable, the separate `comps-v1` annual
-recipe can still run under its original exact-interval rules. Earnings unavailable,
-misaligned or nonpositive on a trailing basis suppress P/E while valid P/S survives.
-
-The quarterly fetcher caches for one hour and persists original observations before
-caching. A failed refresh produces a warning and does not reactivate old archived
-quarterly candidates in the live path. Annual/Q4 observations that share an end date
-are selected separately so quarterly ingestion does not break annual margins or
-fallback P/E. The new recipes and period metadata preserve old calculation IDs,
-serialized records and replay behavior; no new database migration is required.
-Existing migrations through `0005` are still required. Run a fresh analysis to fetch
-quarterly inputs; provider account access must include quarterly stable statements.
-
-Tests cover fiscal-year rollover, calendar versus 52/53-week windows, source-boundary
-replay, incomplete/duplicate/overlapping/YTD inputs, restatement conflicts, filing
-availability, peer skew/staleness, loss-making P/E exclusions, annual fallback,
-HTTP/cache behavior, published claims, offline replay and database persistence.
-Live provider tests remain pending without an FMP key; PostgreSQL integration tests
-require a disposable configured database.
-
-Remaining work: financial expert calibration of these comparison tolerances and a
-larger independently reviewed company corpus; actual provider/account validation;
-SEC-driven Q4 residual reconstruction and annual-plus-current-YTD-minus-prior-YTD
-TTM methods; cumulative cash-flow differencing; statement restatement selection,
-issuer/share-class/corporate-action handling; true calendarization and seasonality
-adjustments; broader non-US/half-year reporting and currency/FX support. The existing
-annual DCF has not been silently switched to TTM inputs. Source availability checks
-do not turn this application into a fully point-in-time backtesting system.

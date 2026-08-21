@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
-from src.models.financial import FinancialObservation, ReportingPeriod, payload_hash
+from src.models.financial import FinancialObservation, payload_hash
 from src.models.evidence import SourcePassage
 
 
@@ -40,7 +40,7 @@ class CalculationStep(BaseModel):
 class CalculationTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
     engine: Literal["decimal-28-half-even-v1"] = "decimal-28-half-even-v1"
-    recipe: Literal["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1", "ttm-income-v1", "comps-ttm-v1"]
+    recipe: Literal["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1"]
     ticker: str
     bindings: dict[str, list[str]]
     scenario: DCFScenario | None = None
@@ -48,7 +48,6 @@ class CalculationTrace(BaseModel):
     steps: list[CalculationStep]
     outputs: dict[str, str]
     currency: str
-    periods: dict[str, ReportingPeriod] = Field(default_factory=dict, exclude_if=lambda value: not value)
     warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="wrap")

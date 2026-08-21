@@ -103,17 +103,3 @@ test("market-cap currency evidence survives runtime validation and trace downloa
   assert.deepEqual(cap.market_cap_context, context);
   assert.equal(FinancialObservationZ.safeParse({ ...cap, market_cap_context: { ...context, basis: "assume-reporting-currency" } }).success, false);
 });
-
-
-test("TTM records retain different fiscal windows and quarter-boundary provenance", () => {
-  const record = JSON.parse(readFileSync(new URL("./fixtures/calculation-record.json", import.meta.url), "utf8"));
-  record.trace.recipe = "comps-ttm-v1";
-  record.trace.periods = {
-    TEST: { kind: "duration", basis: "ttm", start: "2024-01-01", end: "2024-12-31", start_method: "unknown" },
-    PEER: { kind: "duration", basis: "ttm", start: "2023-11-05", end: "2024-11-02", start_method: "unknown" },
-  };
-  record.sources[0].observation.period.start_method = "prior_quarter_end";
-  const memo = MemoZ.parse({ ...demo.sections, calculations: [record] });
-  assert.equal(memo.calculations[0].trace.periods.PEER.end, "2024-11-02");
-  assert.equal(memo.calculations[0].sources[0].observation.period.start_method, "prior_quarter_end");
-});

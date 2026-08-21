@@ -19,7 +19,7 @@ def _select(facts, metric, end=None):
     return candidates[0]
 
 
-def build_research_calculations(ticker: str, facts: list[FinancialObservation], *, scenario: DCFScenario | None = None, peer_facts: dict[str, list[FinancialObservation]] | None = None):
+def _build_annual_calculations(ticker: str, facts: list[FinancialObservation], *, scenario: DCFScenario | None = None, peer_facts: dict[str, list[FinancialObservation]] | None = None):
     traces, warnings = [], []
     own = [o for o in facts if o.ticker == ticker]
     observations = {o.observation_id: o for o in facts}
@@ -30,7 +30,7 @@ def build_research_calculations(ticker: str, facts: list[FinancialObservation], 
         # not allowed to displace annual data.
         revenue = _select([o for o in own if o.period.basis == "annual"], "revenue")
     except CalculationUnavailable as exc:
-        return [], [f"Calculations unavailable: {exc}"]
+        return [], [f"Annual calculations unavailable: {exc}"]
     base = {"revenue": [revenue.observation_id]}
     growth = None
     try:
@@ -41,7 +41,7 @@ def build_research_calculations(ticker: str, facts: list[FinancialObservation], 
         warnings.append(f"Growth unavailable: {exc}")
     for recipe, metric in (("net-margin-v1", "net_income"), ("ocf-margin-v1", "operating_cash_flow")):
         try:
-            numerator = _select(own, metric, revenue.period.end)
+            numerator = _select([o for o in own if o.period.basis == "annual"], metric, revenue.period.end)
             traces.append(calculate(recipe, ticker, {**base, "numerator": [numerator.observation_id]}, observations))
         except CalculationUnavailable as exc:
             warnings.append(f"{recipe} unavailable: {exc}")
@@ -89,7 +89,7 @@ def build_research_calculations(ticker: str, facts: list[FinancialObservation], 
                 continue
             peer = role.split(":", 1)[1]
             try:
-                income = _select(peer_facts[peer], "net_income", revenue.period.end)
+                income = _select([o for o in peer_facts[peer] if o.period.basis == "annual"], "net_income", revenue.period.end)
                 if income.value <= 0:
                     raise CalculationUnavailable("Nonpositive income")
                 trial = {**bindings, f"peer_income:{peer}": [income.observation_id]}
@@ -98,7 +98,7 @@ def build_research_calculations(ticker: str, facts: list[FinancialObservation], 
             except CalculationUnavailable as exc:
                 warnings.append(f"Comparable P/E peer {peer} excluded: {exc}")
         try:
-            income = _select(own, "net_income", revenue.period.end)
+            income = _select([o for o in own if o.period.basis == "annual"], "net_income", revenue.period.end)
             if income.value > 0 and pe_bindings:
                 bindings.update(pe_bindings)
                 bindings["target_income"] = [income.observation_id]
@@ -111,3 +111,21 @@ def build_research_calculations(ticker: str, facts: list[FinancialObservation], 
     if not by_date:
         warnings.append("Comparables unavailable: no peers with compatible dated capitalization and fiscal data")
     return traces, warnings
+
+
+
+def build_research_calculations(ticker, facts, *, scenario=None, peer_facts=None, as_of=None):
+    from src.modeler.ttm_selection import build_ttm_calculations
+    peer_facts = peer_facts or {}
+    annual, warnings = _build_annual_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts)
+    dates = [o.period.end for items in peer_facts.values() for o in items if o.metric == "market_cap" and o.period.end]
+    reference = as_of or (max(dates) if dates else None)
+    if reference is None:
+        return annual, warnings
+    ttm, issues = build_ttm_calculations(ticker, facts, peer_facts, reference)
+    # Prefer the TTM cohort when available; never combine its multiples with
+    # annual denominators. Old comps-v1 remains replayable and a labeled fallback.
+    if any(t.recipe == "comps-ttm-v1" for t in ttm):
+        annual = [t for t in annual if t.recipe != "comps-v1"]
+        warnings = [w for w in warnings if not w.startswith(("Comparable", "Comparables"))]
+    return annual + ttm, warnings + issues

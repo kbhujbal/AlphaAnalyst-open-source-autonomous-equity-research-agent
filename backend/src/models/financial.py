@@ -26,7 +26,7 @@ class ReportingPeriod(BaseModel):
     basis: Literal["annual", "quarterly", "ytd", "ttm", "unknown"] = "unknown"
     fiscal_year: str | None = None
     fiscal_period: str | None = None
-    start_method: Literal["reported", "prior_annual_end", "unknown"] = "unknown"
+    start_method: Literal["reported", "prior_annual_end", "prior_quarter_end", "unknown"] = "unknown"
     start_evidence: BoundaryEvidence | None = None
 
     @model_validator(mode="after")
@@ -43,10 +43,10 @@ class ReportingPeriod(BaseModel):
             raise ValueError("A fiscal duration requires an end date")
         if self.start_method != "unknown" and self.start is None:
             raise ValueError("A start-date derivation requires a start date")
-        if self.start_method == "prior_annual_end" and (
+        if self.start_method in {"prior_annual_end", "prior_quarter_end"} and (
             self.start_evidence is None or self.start != self.start_evidence.period_end + timedelta(days=1)
         ):
-            raise ValueError("Derived annual starts require the preceding boundary's evidence")
+            raise ValueError("Derived starts require the preceding boundary's evidence")
         return self
 
 

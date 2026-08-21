@@ -124,6 +124,9 @@ class FmpClient:
     async def key_metrics_ttm(self, ticker: str) -> list[dict[str, Any]]:
         return await self._get(f"/api/v3/key-metrics-ttm/{ticker.upper()}")
 
+    async def quarterly_income_statement(self, ticker: str, limit: int = 12) -> list[dict[str, Any]]:
+        return await self._get("/stable/income-statement", {"symbol": ticker.upper(), "period": "quarter", "limit": limit})
+
     async def company_profile(self, ticker: str) -> list[dict[str, Any]]:
         return await self._get("/stable/profile", {"symbol": ticker.upper()})
 

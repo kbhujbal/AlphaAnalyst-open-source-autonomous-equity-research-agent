@@ -41,7 +41,7 @@ export const FinancialObservationZ = z.object({
     start: z.string().nullable().optional(), end: z.string().nullable().optional(),
     basis: z.enum(["annual", "quarterly", "ytd", "ttm", "unknown"]),
     fiscal_year: z.string().nullable().optional(), fiscal_period: z.string().nullable().optional(),
-    start_method: z.enum(["reported", "prior_annual_end", "unknown"]),
+    start_method: z.enum(["reported", "prior_annual_end", "prior_quarter_end", "unknown"]),
     start_evidence: z.object({ period_end: z.string(), locator: z.string(), payload_hash: z.string() }).nullable().optional(),
   }),
   dimensions: z.record(z.string()).optional(),
@@ -67,11 +67,16 @@ const DCFScenarioZ = z.object({
 
 const CalculationTraceZ = z.object({
   engine: z.literal("decimal-28-half-even-v1"),
-  recipe: z.enum(["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1"]),
+  recipe: z.enum(["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1", "ttm-income-v1", "comps-ttm-v1"]),
   ticker: z.string(), bindings: z.record(z.array(z.string())), scenario: DCFScenarioZ.nullable().optional(),
   valuation_date: z.string().nullable().optional(), currency: z.string(), calculation_id: z.string(),
   steps: z.array(z.object({ node: z.string(), operation: z.string(), inputs: z.array(z.string()).default([]),
     value: z.string(), unit: z.string(), observation_id: z.string().nullable().optional(), note: z.string().nullable().optional() })),
+  periods: z.record(z.object({
+    kind: z.enum(["instant", "duration", "unknown"]), start: z.string().nullable().optional(), end: z.string().nullable().optional(),
+    basis: z.enum(["annual", "quarterly", "ytd", "ttm", "unknown"]),
+    start_method: z.enum(["reported", "prior_annual_end", "prior_quarter_end", "unknown"]),
+  })).optional(),
   outputs: z.record(z.string()), warnings: z.array(z.string()).default([]),
 }) satisfies z.ZodType<components["schemas"]["CalculationTrace"]>;
 

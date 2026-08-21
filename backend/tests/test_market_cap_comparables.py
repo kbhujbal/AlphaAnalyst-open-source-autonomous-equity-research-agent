@@ -99,6 +99,8 @@ async def test_pipeline_fetches_supported_caps_and_discards_undated_ttm_values(a
     from src.orchestrator import pipeline
     from src.models.market import FundamentalSnapshot, Peer
     trace, facts, _, peers = archived
+    from src.fetchers.quarterly import QuarterlyBatch
+    mocker.patch.object(pipeline, "fetch_quarterly_income", AsyncMock(return_value=QuarterlyBatch()))
     def snapshot(ticker):
         selected = {o.metric: o for o in facts.values() if o.ticker == ticker and o.metric != "market_cap"}
         revenue = selected["revenue"]

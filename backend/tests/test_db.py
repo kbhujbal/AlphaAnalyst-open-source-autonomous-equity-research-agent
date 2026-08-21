@@ -224,3 +224,23 @@ async def test_market_cap_context_survives_immutable_storage_and_source_reload(d
     assert await verify_fact_sources([fact], "P1") == []
     assert fact.verified
     assert any('"currency":"USD"' in p.text for p in fact.passages)
+
+
+async def test_quarter_boundaries_and_ttm_calculations_survive_database_reload(db_session, monkeypatch):
+    from src.fetchers import evidence_store, financial_store, calculation_store
+    from src.calculation_verification import verify_calculations
+    from src.modeler.traces import calculate
+    from src.modeler.ttm_selection import select_quarters
+    from tests.test_ttm import quarterly, AS_OF
+    factory = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    for module in (evidence_store, financial_store, calculation_store):
+        monkeypatch.setattr(module, "SessionLocal", factory)
+    facts = quarterly()
+    await financial_store.persist_observations(facts)
+    loaded = await financial_store.load_company_observations("TEST")
+    bindings = {"revenue": select_quarters(loaded, "TEST", "revenue", AS_OF), "income": select_quarters(loaded, "TEST", "net_income", AS_OF)}
+    trace = calculate("ttm-income-v1", "TEST", bindings, {o.observation_id: o for o in loaded}, valuation_date=AS_OF)
+    records, issues = await verify_calculations([trace], "TEST")
+    assert not issues
+    await calculation_store.save_record(records[0])
+    assert (await calculation_store.load_record(trace.calculation_id)).trace.periods["TEST"].basis == "ttm"

@@ -37,6 +37,7 @@ from src.fetchers.filings import (
 )
 from src.fetchers.indexer import index_filing, index_transcript
 from src.fetchers.macro import fetch_macro_snapshot
+from src.fetchers.quarterly import fetch_quarterly_income
 from src.fetchers.market_cap import fetch_market_caps
 from src.fetchers.market_data import fetch_fundamentals, fetch_peers, fetch_prices
 from src.fetchers.news import fetch_news
@@ -141,6 +142,13 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
         preferred = list(fundamentals.observations.values())
         contexts = {(o.metric, o.period.end) for o in preferred}
         facts = [o for o in history if (o.metric, o.period.end) not in contexts] + preferred
+        facts = [o for o in facts if not (o.metric in {"revenue", "net_income"} and o.period.basis == "quarterly")]
+        try:
+            batch = await fetch_quarterly_income(ticker)
+            facts += batch.observations
+            errors.extend(batch.warnings)
+        except Exception as exc:
+            errors.append(f"TTM input {ticker} unavailable: {public_diagnostic(str(exc))}")
         peer_facts = {}
         for peer in peers[:5]:
             if peer.ticker == ticker or peer.ticker in peer_facts:
@@ -153,7 +161,13 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
                 data = [o for o in historical if (o.metric, o.period.end) not in contexts] + selected
                 # Fresh supported cap batches replace all archived/TTM caps;
                 # a failed refresh never silently falls back to stale context.
-                data = [o for o in data if o.metric != "market_cap"]
+                data = [o for o in data if o.metric != "market_cap" and not (o.metric in {"revenue", "net_income"} and o.period.basis == "quarterly")]
+                try:
+                    quarters = await fetch_quarterly_income(peer.ticker)
+                    data += quarters.observations
+                    errors.extend(f"TTM input {peer.ticker}: {warning}" for warning in quarters.warnings)
+                except Exception as exc:
+                    errors.append(f"TTM input {peer.ticker} unavailable: {public_diagnostic(str(exc))}")
                 try:
                     batch = await fetch_market_caps(peer.ticker)
                     errors.extend(f"Comparable peer {peer.ticker}: {warning}" for warning in batch.warnings)
@@ -163,7 +177,7 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
                 peer_facts[peer.ticker] = data
             except Exception as exc:
                 errors.append(f"Comparable peer {peer.ticker} unavailable: {public_diagnostic(str(exc))}")
-        traces, warnings = build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts)
+        traces, warnings = build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts, as_of=datetime.now(timezone.utc).date())
         errors.extend(warnings)
         return traces
     except Exception as exc:

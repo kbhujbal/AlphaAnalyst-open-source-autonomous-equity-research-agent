@@ -62,11 +62,14 @@ async def verify_fact_sources(facts: list[VerifiedFact], ticker: str) -> list[st
                 boundary = original.period.start_evidence
                 if boundary is not None:
                     raw = boundaries.get(boundary.payload_hash)
-                    if not raw or raw.get("symbol") != ticker or raw.get("period") != "FY" or date.fromisoformat(raw["date"]) != boundary.period_end:
+                    if original.period.start_method == "prior_quarter_end":
+                        from src.fetchers.quarterly import verify_quarter_source
+                        verify_quarter_source(original, raw)
+                    elif not raw or raw.get("symbol") != ticker or raw.get("period") != "FY" or date.fromisoformat(raw["date"]) != boundary.period_end:
                         raise ValueError("Derived reporting start has no verified preceding annual boundary")
                     boundary_document = record_document(original, raw, f"boundary:{boundary.payload_hash}")
                     boundary_document = await evidence_store.save_document(boundary_document)
-                    passages += record_fields(boundary_document, raw, ["date", "period", "symbol"])
+                    passages += record_fields(boundary_document, raw, ["date", "period", "fiscalYear", "symbol"])
                 fact.observation = original
                 fact.evidence = [Citation(source_type="fact", source_id=original.source.document_url or original.source.url,
                                           snippet="\n".join(p.text for p in passages), observation_id=original.observation_id,

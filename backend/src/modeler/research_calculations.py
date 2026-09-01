@@ -114,7 +114,7 @@ def _build_annual_calculations(ticker: str, facts: list[FinancialObservation], *
 
 
 
-def build_research_calculations(ticker, facts, *, scenario=None, peer_facts=None, as_of=None, bridge_facts=None, peer_bridge_facts=None):
+def _build_research_calculations(ticker, facts, *, scenario=None, peer_facts=None, as_of=None, bridge_facts=None, peer_bridge_facts=None):
     from src.modeler.ttm_selection import build_ttm_calculations
     peer_facts = peer_facts or {}
     annual, warnings = _build_annual_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts)
@@ -151,3 +151,49 @@ def build_research_calculations(ticker, facts, *, scenario=None, peer_facts=None
         result += bridged
         messages += bridge_warnings
     return list({t.calculation_id: t for t in result}.values()), messages
+
+
+
+def build_research_calculations(ticker, facts, *, scenario=None, peer_facts=None, as_of=None,
+                                bridge_facts=None, peer_bridge_facts=None, filing_universe=None):
+    from src.modeler.reconciliation import reconcile, reconciled_view, audit_for_trace
+    if filing_universe is None or as_of is None or not reconcile(filing_universe, as_of).decisions:
+        return _build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts, as_of=as_of,
+            bridge_facts=bridge_facts, peer_bridge_facts=peer_bridge_facts)
+    peers = peer_facts or {}
+    bridge_peers = peer_bridge_facts or peers
+    universe = list({o.observation_id:o for o in filing_universe + facts + (bridge_facts or [])
+                     + [o for data in peers.values() for o in data] + [o for data in bridge_peers.values() for o in data]}.values())
+    observations = {o.observation_id:o for o in universe}
+    dates = {as_of} | {o.period.end for data in peers.values() for o in data if o.metric == "market_cap" and o.period.end and o.period.end <= as_of}
+    warnings, accepted = [], []
+    def view(items, day): return reconciled_view(items, universe, day)[0]
+    def peer_view(items, day):
+        return [o for o in view(items, day) if o.metric != "market_cap" or o.period.end == day]
+    for day in sorted(dates):
+        proposed, issues = _build_research_calculations(ticker, view(facts, day), scenario=scenario if day == as_of else None,
+            peer_facts={company:peer_view(data, day) for company,data in peers.items()}, as_of=day,
+            bridge_facts=view(bridge_facts, day) if bridge_facts is not None else None,
+            peer_bridge_facts={company:peer_view(data, day) for company,data in bridge_peers.items()})
+        if day == as_of: warnings.extend(issues)
+        for trace in proposed:
+            comparable = trace.recipe.startswith("comps-")
+            if not comparable and day != as_of: continue
+            cutoff = trace.valuation_date or day
+            audit = audit_for_trace(trace, universe, cutoff)
+            try:
+                checked = calculate(trace.recipe, trace.ticker, trace.bindings, observations, scenario=trace.scenario,
+                    valuation_date=trace.valuation_date, period_methods=trace.period_methods, reconciliation=audit)
+                accepted.append(checked)
+            except CalculationUnavailable as exc:
+                warnings.append(f"{trace.recipe}: filing-version reconciliation withheld calculation: {exc}")
+    comparables = [trace for trace in accepted if trace.recipe.startswith("comps-")]
+    if comparables:
+        ttm = [trace for trace in comparables if trace.recipe != "comps-v1"]
+        best = max(ttm or comparables, key=lambda trace:(sum(k.startswith("peer_cap:") for k in trace.bindings), trace.valuation_date))
+        accepted = [trace for trace in accepted if not trace.recipe.startswith("comps-")] + [best]
+    audit = reconcile(universe, as_of)
+    for decision in audit.decisions:
+        if decision.status in {"revised", "ambiguous"}:
+            warnings.append(f"{decision.ticker} {decision.metric} {decision.period.start} to {decision.period.end}: {decision.status}; {decision.reason}")
+    return list({trace.calculation_id:trace for trace in accepted}.values()), list(dict.fromkeys(warnings))

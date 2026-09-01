@@ -15,6 +15,9 @@ a real contact email; requests without it are blocked at the edge.
 from __future__ import annotations
 
 import asyncio
+import re
+from collections import deque
+from weakref import WeakKeyDictionary
 from typing import Any
 
 import httpx
@@ -45,6 +48,22 @@ def _pad_cik(cik: str | int) -> str:
 
 def _clean_accession(accession_no: str) -> str:
     return accession_no.replace("-", "")
+
+
+_REQUEST_GATES = WeakKeyDictionary()
+
+
+async def _wait_for_sec_slot():
+    loop = asyncio.get_running_loop()
+    lock, stamps = _REQUEST_GATES.setdefault(loop, (asyncio.Lock(), deque()))
+    async with lock:
+        while stamps and loop.time() - stamps[0] >= 1:
+            stamps.popleft()
+        if len(stamps) >= 8:
+            await asyncio.sleep(max(0, 1 - (loop.time() - stamps[0])))
+            while stamps and loop.time() - stamps[0] >= 1:
+                stamps.popleft()
+        stamps.append(loop.time())
 
 
 class EdgarClient:
@@ -95,6 +114,7 @@ class EdgarClient:
         ):
             with attempt:
                 async with self._semaphore:
+                    await _wait_for_sec_slot()
                     response = await self._client.get(url)
                 response.raise_for_status()
                 return response.json()
@@ -118,6 +138,12 @@ class EdgarClient:
     async def get_submissions(self, cik: str) -> dict[str, Any]:
         url = f"https://data.sec.gov/submissions/CIK{_pad_cik(cik)}.json"
         return await self._get_json(url)
+
+    async def get_submission_archive(self, cik: str, name: str) -> dict[str, Any]:
+        expected = rf"CIK{_pad_cik(cik)}-submissions-\d{{3}}\.json"
+        if not isinstance(name, str) or not re.fullmatch(expected, name):
+            raise EdgarError("Invalid SEC submissions archive name")
+        return await self._get_json(f"https://data.sec.gov/submissions/{name}")
 
     async def get_filing_index(
         self, cik: str, accession_no: str

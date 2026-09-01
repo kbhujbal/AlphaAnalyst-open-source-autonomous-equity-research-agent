@@ -263,3 +263,28 @@ async def test_period_bridge_sources_and_method_identity_survive_database_reload
     restored = await calculation_store.load_record(trace.calculation_id)
     assert restored.trace.period_methods == {"revenue":"annual-ytd"}
     assert restored.model_dump(mode="json") == records[0].model_dump(mode="json")
+
+
+async def test_original_and_revised_filing_values_survive_reconciled_record_storage(db_session, monkeypatch):
+    from src.fetchers import evidence_store, financial_store, calculation_store
+    from src.calculation_verification import verify_calculations
+    from src.modeler.research_calculations import build_research_calculations
+    from tests.test_reconciliation import quarter_set, version, AS_OF
+    factory=async_sessionmaker(db_session.bind,expire_on_commit=False)
+    for module in (evidence_store,financial_store,calculation_store):
+        monkeypatch.setattr(module,"SessionLocal",factory)
+    original=quarter_set()
+    amended=version(35,"amended","2025-01-15")
+    universe=original+[amended]
+    await financial_store.persist_observations(universe)
+    loaded=await financial_store.load_company_observations("TEST")
+    assert len(loaded) == 5
+    traces,_=build_research_calculations("TEST",original,as_of=AS_OF,filing_universe=loaded)
+    trace=next(t for t in traces if t.recipe == "ttm-income-v1")
+    records,issues=await verify_calculations([trace],"TEST")
+    assert not issues
+    await calculation_store.save_record(records[0])
+    restored=await calculation_store.load_record(trace.calculation_id)
+    assert restored.model_dump(mode="json") == records[0].model_dump(mode="json")
+    changed=next(d for d in restored.trace.reconciliation.decisions if d.status == "revised")
+    assert {v.value for v in changed.versions} == {Decimal(25),Decimal(35)}

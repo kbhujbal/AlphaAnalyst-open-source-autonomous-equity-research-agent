@@ -97,6 +97,15 @@ def export_pdf(memo: Memo, path: Path, *, warnings: list[str] | None = None) -> 
         for record in memo.calculations:
             trace = record.trace
             story.append(Paragraph(escape(f"{trace.recipe}: {trace.calculation_id}; {trace.engine}"), styles["Heading3"]))
+            if trace.reconciliation:
+                audit = trace.reconciliation
+                story.append(Paragraph(escape(f"Filing selection: {audit.policy}; cutoff {audit.as_of}; retained SEC contexts only"), styles["BodyText"]))
+                for check in trace.reconciliation_checks:
+                    story.append(Paragraph(escape(f"Revision overlap: computed {check.calculated_value}; reported {check.reported_value}; passed {check.passed}; context {check.context_id}"), styles["BodyText"]))
+                for decision in audit.decisions:
+                    story.append(Paragraph(escape(f"{decision.ticker} {decision.metric} {decision.period.start} to {decision.period.end}: {decision.status}; {decision.reason}"), styles["BodyText"]))
+                    for version in decision.versions:
+                        story.append(Paragraph(escape(f"{version.value} {decision.unit}; {version.accession_no}; filed {version.filing_date}; observation {version.observation_id}; {'selected' if version.observation_id == decision.selected_observation_id else 'retained alternative'}"), styles["BodyText"]))
             for role, method in trace.period_methods.items():
                 story.append(Paragraph(escape(f"{role}: reconstruction method {method}"), styles["BodyText"]))
             for ticker, period in trace.periods.items():

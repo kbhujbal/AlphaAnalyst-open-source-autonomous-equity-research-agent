@@ -528,6 +528,23 @@
             "type": "string",
             "title": "Currency"
           },
+          "reconciliation_checks": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionOverlapCheck"
+            },
+            "type": "array",
+            "title": "Reconciliation Checks"
+          },
+          "reconciliation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilingReconciliation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "period_methods": {
             "additionalProperties": {
               "type": "string",
@@ -826,6 +843,87 @@
         ],
         "title": "ClaimAudit"
       },
+      "ContextDecision": {
+        "properties": {
+          "context_id": {
+            "type": "string",
+            "title": "Context Id"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "metric": {
+            "type": "string",
+            "title": "Metric"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ReportingPeriod"
+          },
+          "selected_observation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Observation Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "single",
+              "equivalent",
+              "revised",
+              "ambiguous"
+            ],
+            "title": "Status"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/FilingVersionValue"
+            },
+            "type": "array",
+            "title": "Versions"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "context_id",
+          "ticker",
+          "metric",
+          "unit",
+          "currency",
+          "period",
+          "selected_observation_id",
+          "status",
+          "versions",
+          "reason"
+        ],
+        "title": "ContextDecision"
+      },
       "DCFScenario-Input": {
         "properties": {
           "name": {
@@ -972,6 +1070,92 @@
         },
         "type": "object",
         "title": "ExportLinks"
+      },
+      "FilingReconciliation": {
+        "properties": {
+          "policy": {
+            "type": "string",
+            "const": "latest-available-overlap-v1",
+            "title": "Policy",
+            "default": "latest-available-overlap-v1"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Observation Ids"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/ContextDecision"
+            },
+            "type": "array",
+            "title": "Decisions"
+          },
+          "scope": {
+            "type": "string",
+            "const": "retained-sec-contexts-only",
+            "title": "Scope",
+            "default": "retained-sec-contexts-only"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "as_of",
+          "observation_ids",
+          "decisions"
+        ],
+        "title": "FilingReconciliation"
+      },
+      "FilingVersionValue": {
+        "properties": {
+          "observation_id": {
+            "type": "string",
+            "title": "Observation Id"
+          },
+          "accession_no": {
+            "type": "string",
+            "title": "Accession No"
+          },
+          "filing_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Filing Date"
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "observation_id",
+          "accession_no",
+          "filing_date",
+          "accepted_at",
+          "value"
+        ],
+        "title": "FilingVersionValue"
       },
       "FinancialObservation": {
         "properties": {
@@ -1601,6 +1785,43 @@
           "kind"
         ],
         "title": "ReportingPeriod"
+      },
+      "RevisionOverlapCheck": {
+        "properties": {
+          "context_id": {
+            "type": "string",
+            "title": "Context Id"
+          },
+          "observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Observation Ids"
+          },
+          "calculated_value": {
+            "type": "string",
+            "title": "Calculated Value"
+          },
+          "reported_value": {
+            "type": "string",
+            "title": "Reported Value"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "context_id",
+          "observation_ids",
+          "calculated_value",
+          "reported_value",
+          "passed"
+        ],
+        "title": "RevisionOverlapCheck"
       },
       "SourcePassage": {
         "properties": {

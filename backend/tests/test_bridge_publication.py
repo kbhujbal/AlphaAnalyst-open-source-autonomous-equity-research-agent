@@ -84,11 +84,13 @@ async def test_bridge_record_replays_offline_from_original_documents(archive, tm
 
 async def test_peer_bridge_ingestion_retains_existing_sec_contexts(mocker):
     from src.fetchers import period_inputs
-    filings = [object(), object()]
+    from tests.test_pipeline import _filing
+    from src.fetchers.filing_history import FilingHistoryBatch
+    filings = [_filing("10-K", "annual"), _filing("10-Q", "interim")]
     items = ytd_inputs()
     mocker.patch.object(period_inputs, "fetch_latest_10k", AsyncMock(return_value=filings[0]))
-    mocker.patch.object(period_inputs, "fetch_latest_10q", AsyncMock(return_value=filings[1]))
-    extraction = mocker.patch.object(period_inputs, "extract_facts", AsyncMock(side_effect=[items[:1], items[1:]]))
+    mocker.patch.object(period_inputs, "fetch_historical_10qs", AsyncMock(return_value=FilingHistoryBatch(ticker="TEST", as_of=AS_OF, filings=[filings[1]])))
+    extraction = mocker.patch.object(period_inputs, "extract_retained_facts", AsyncMock(side_effect=[items[:1], items[1:]]))
     facts, warnings = await period_inputs.fetch_period_bridge_inputs("TEST")
     assert facts == items and not warnings
     assert extraction.await_count == 2
@@ -96,9 +98,10 @@ async def test_peer_bridge_ingestion_retains_existing_sec_contexts(mocker):
 
 async def test_failed_peer_interim_extraction_is_disclosed(mocker):
     from src.fetchers import period_inputs
-    mocker.patch.object(period_inputs, "fetch_latest_10k", AsyncMock(return_value=object()))
-    mocker.patch.object(period_inputs, "fetch_latest_10q", AsyncMock(side_effect=ValueError("No 10-Q available")))
-    mocker.patch.object(period_inputs, "extract_facts", AsyncMock(return_value=ytd_inputs()[:1]))
+    from tests.test_pipeline import _filing
+    mocker.patch.object(period_inputs, "fetch_latest_10k", AsyncMock(return_value=_filing("10-K", "annual")))
+    mocker.patch.object(period_inputs, "fetch_historical_10qs", AsyncMock(side_effect=ValueError("No 10-Q available")))
+    mocker.patch.object(period_inputs, "extract_retained_facts", AsyncMock(return_value=ytd_inputs()[:1]))
     facts, warnings = await period_inputs.fetch_period_bridge_inputs("TEST")
     assert len(facts) == 1
     assert warnings and "No 10-Q" in warnings[0]
@@ -130,7 +133,7 @@ async def test_live_builder_can_use_peer_sec_ytd_facts_without_four_quarters(moc
     mocker.patch.object(pipeline, "datetime", Clock)
     traces = await pipeline._build_calculations("TEST", snapshot("TEST"), [Peer(ticker="P1", source=cap.source)], None, [])
     assert any(t.recipe == "comps-flex-v1" for t in traces)
-    source.assert_awaited_once_with("P1")
+    assert [call.args[0] for call in source.await_args_list] == ["TEST", "P1"]
     records, issues = await verify_calculations(traces, "TEST")
     assert not issues
     assert any(record.trace.recipe == "comps-flex-v1" for record in records)

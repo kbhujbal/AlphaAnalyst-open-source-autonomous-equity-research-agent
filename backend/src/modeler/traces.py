@@ -78,7 +78,7 @@ def _instant(obs, metric, ticker, currency, as_of):
         raise CalculationUnavailable(f"{metric}: requires a matching dated, unit-consistent observation")
 
 
-def calculate(recipe: str, ticker: str, bindings: dict[str, list[str]], observations: dict[str, FinancialObservation], *, scenario: DCFScenario | None = None, valuation_date: date | None = None, period_methods: dict | None = None) -> CalculationTrace:
+def _calculate_recipe(recipe: str, ticker: str, bindings: dict[str, list[str]], observations: dict[str, FinancialObservation], *, scenario: DCFScenario | None = None, valuation_date: date | None = None, period_methods: dict | None = None) -> CalculationTrace:
     with localcontext(CONTEXT):
         if recipe in {"q4-v1", "ttm-ytd-v1", "cashflow-difference-v1"}:
             from src.modeler.period_bridges import calculate_bridge
@@ -92,6 +92,17 @@ def calculate(recipe: str, ticker: str, bindings: dict[str, list[str]], observat
             from src.modeler.ttm import calculate_ttm
             return calculate_ttm(recipe, ticker, bindings, observations, scenario, valuation_date)
         return _calculate(recipe, ticker, bindings, observations, scenario, valuation_date)
+
+
+
+def calculate(recipe, ticker, bindings, observations, *, scenario=None, valuation_date=None, period_methods=None, reconciliation=None):
+    trace = _calculate_recipe(recipe, ticker, bindings, observations, scenario=scenario,
+                              valuation_date=valuation_date, period_methods=period_methods)
+    if reconciliation is not None:
+        from src.modeler.reconciliation import enforce
+        checks = enforce(trace, reconciliation, observations)
+        trace = trace.model_copy(update={"reconciliation": reconciliation, "reconciliation_checks": checks})
+    return trace
 
 
 def _calculate(recipe, ticker, bindings, observations, scenario, valuation_date):
@@ -266,7 +277,7 @@ def _calculate(recipe, ticker, bindings, observations, scenario, valuation_date)
 
 
 def replay(trace: CalculationTrace, observations: dict[str, FinancialObservation]) -> CalculationTrace:
-    rebuilt = calculate(trace.recipe, trace.ticker, trace.bindings, observations, scenario=trace.scenario, valuation_date=trace.valuation_date, period_methods=trace.period_methods)
+    rebuilt = calculate(trace.recipe, trace.ticker, trace.bindings, observations, scenario=trace.scenario, valuation_date=trace.valuation_date, period_methods=trace.period_methods, reconciliation=trace.reconciliation)
     if rebuilt.model_dump(mode="json") != trace.model_dump(mode="json"):
         raise CalculationUnavailable("Calculation trace differs from registered recipe replay")
     return rebuilt

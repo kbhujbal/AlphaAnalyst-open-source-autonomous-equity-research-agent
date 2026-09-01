@@ -219,7 +219,7 @@ debt, cash and share observations plus explicit scenario assumptions.
 Still pending: applying/testing migrations on a live PostgreSQL instance; provider
 account smoke tests; a larger independently reviewed company corpus; full XBRL
 context/taxonomy coverage; a security master; historical/as-of query APIs; raw HTTP
-archives; automatic restatement/reconciliation workflows; verified quote metadata;
+archives; broader accounting/restatement reconciliation workflows; verified quote metadata;
 and a financially reviewed valuation methodology. The existing price, macro, and
 estimates pipelines have not been converted into this financial-statement model.
 The stored filing dates and timezone-aware acceptance timestamps do not by
@@ -615,7 +615,8 @@ capitalization dates. Offline replay verifies the registered bridge arithmetic a
 with captured documents, the original provider payloads.
 
 Target SEC annual/interim contexts already extracted by the pipeline are reused.
-For up to five peers, the pipeline now extracts the latest SEC 10-K and 10-Q as well
+For up to five peers, the pipeline extracts a SEC annual anchor and the bounded
+quarterly history described below, as well
 as fetching the existing annual and discrete-quarter vendor data. Explicit SEC
 start/end durations provide genuine cumulative YTD contexts; the application does
 not relabel vendor discrete cash-flow or income rows as YTD. Original context
@@ -638,9 +639,124 @@ peer ingestion, frontend contracts and a database persistence round-trip test.
 
 Pending: live provider/account validation and current PostgreSQL integration tests;
 financial expert review and independently reconciled company examples; automated
-restatement/accounting-policy reconciliation across annual/interim filings; earlier
-10-Q history when the latest reports lack needed prefixes; richer 52/53-week and
+broader accounting-policy reconciliation across annual/interim filings and
+SEC history beyond the bounded ingestion window; richer 52/53-week and
 non-US fiscal-transition coverage; additional cash-flow metrics, FX and share-class
 handling. Source/period/chronology checks do not prove cross-filing accounting
 comparability. That limitation is explicitly shown in reconstruction warnings rather
 than implied to be fully verified.
+
+
+## Historical 10-Q ingestion and filing-version reconciliation
+
+Both the target and up to five peers now ingest bounded SEC quarterly history,
+including `10-Q/A` amendments. Discovery reads `filings.recent` and follows the
+historical pages listed in `filings.files` through the
+[SEC submissions API](https://www.sec.gov/search-filings/edgar-application-programming-interfaces).
+It does not assume the recent array contains every needed quarter.
+
+Defaults are a 1,098-day filing-date lookback, at most 12 quarterly filings total
+(originals plus amendments), and at most three historical archive pages. Function
+parameters allow bounded expansion. Limits, inaccessible pages, malformed arrays,
+conflicting accession metadata and excluded rows produce explicit partial-coverage
+warnings. Requested cutoffs exclude later filing/acceptance dates. A late amendment
+to an older report remains a distinct accession; it does not replace unrelated
+quarters. Safe archive filenames are restricted to the requested CIK and the fixed
+SEC submissions host. Aligned required arrays and primary-document names are checked
+before constructing filing URLs.
+
+Normalized submissions snapshots are retained in the existing immutable source
+archive. Filing metadata and each original XBRL fact version remain stored under
+their existing identities. Extraction runs with concurrency two. A shared
+per-event-loop SEC request gate permits at most eight requests per second; it also
+paces retries. Distributed/multi-worker rate coordination is not implemented.
+Successful discoveries cache for five minutes; partial discoveries are retried.
+
+An accession-level 24-hour extraction cache reuses retained original observations
+only when all listed IDs, ticker, accession, filing date, document URL, acceptance
+time, payload hashes and source values still match. Missing/corrupt records trigger
+source extraction again. Failures and empty/nonmatching results are not marked as
+successes; `refresh=True` bypasses reuse. This is a processing-success marker, not a
+claim that every possible financial context or custom taxonomy has been extracted.
+
+An amended filing with failed extraction, or known malformed/conflicting amendment
+metadata, is unresolved. It cannot silently authorize the old quantitative inputs:
+target calculations/reported snapshot are withheld, and an affected peer is excluded.
+A target whose essential revenue becomes unresolved does not publish a memo. A
+successful amendment still carries a scope warning: extracted numerical contexts
+are not a formal accounting restatement review. Original observations are retained
+in every case; a nonfinancial amendment is not automatically assumed harmless.
+
+`latest-available-overlap-v1` adds a reproducible selection audit:
+
+1. Group retained SEC facts by exact ticker, normalized metric, complete interval or
+   instant, duration basis, units, currency and dimensions. Different fiscal windows
+   and currencies are never merged; segmented/unknown contexts are outside this
+   initial automatic policy.
+2. Select the latest available filing for each context at the explicit cutoff.
+   Acceptance timestamps resolve same-day order only when known for all competing
+   latest versions. Conflicting values in tied filings or within one accession are
+   ambiguous; fetching a payload later does not resolve them. Identical aliases or
+   re-presented values can be treated as equivalent with a deterministic source ID.
+3. Keep all original/superseded observations and distinguish `single`, `equivalent`,
+   `revised` and `ambiguous` contexts. `revised` means a changed reported value in the
+   retained numerical data, not a diagnosis that the company formally restated.
+4. Replace matching candidate/vendor contexts with the selected SEC version. Keep
+   unresolved alternatives visible so the calculation selector cannot bypass an
+   ambiguity by silently choosing a vendor number or an older convenient period.
+5. Independently check overlaps. A selected older annual/YTD aggregate spanning a
+   changed interval from another filing is withheld without a compatible basis,
+   even if that aggregate was filed later. Complete, contiguous selected quarters
+   may instead reconcile to the latest changed cumulative amount when their exact
+   sum matches it. Mismatches or incomplete coverage withhold the calculation.
+   A matching aggregate sum does not establish the truth of every individual
+   accounting component.
+
+The policy is applied separately at each market-cap date. A revision available at
+the later report date cannot leak into an earlier-dated comparable. Current research
+financial calculations use the analysis cutoff. Reported annual snapshot observations
+are also updated to selected versions, with confidence downgraded and review warnings;
+ambiguous values are removed instead of being passed to the writer as current facts.
+Existing annual/Q4/YTD arithmetic recipes keep their previous behavior when replayed
+without the new policy metadata.
+
+`CalculationTrace.reconciliation` pins the cutoff, exact source-universe IDs and
+context/version decisions. `reconciliation_checks` retains explicit quarter-sum vs
+reported-value checks. Both fields participate in the calculation identity. Before
+publication, the verifier independently reloads **all** required original, selected
+and superseded source records, verifies retained passages and replays selection and
+arithmetic. Modifying an audit, cutoff, reported overlap value or source version fails
+verification. An old report is not reinterpreted using today's newly arrived filings:
+the record's source snapshot is explicit and immutable.
+
+The report UI and PDF expose the selected and retained alternative values, accessions,
+filing/acceptance dates, reasons and overlap checks. JSON downloads retain the complete
+audit and source evidence; offline replay works with the same retained documents.
+Alternative source passages are labeled in the synthesis prompt so they are not
+presented as the currently selected fact. The audit scope is
+`retained-sec-contexts-only`; it does not certify exhaustive SEC coverage, accounting
+policy compatibility, issuer identity history, or historical investability.
+
+No dependency or database migration is added. The existing source, observation and
+calculation stores retain the additional data in their existing JSON fields. New
+metadata is omitted when absent so legacy record JSON, IDs and replay remain
+compatible. Existing migrations through `0005` remain necessary. Run a fresh analysis
+to ingest historical quarters; an initialized PostgreSQL/Redis environment, SEC
+contact User-Agent and existing provider credentials are still required.
+
+Tests cover archive discovery, amendments, duplicate/conflicting metadata, as-of and
+resource bounds, unsafe archive links, request pacing, extraction reuse and failures;
+exact-context selection, unknown intraday order and same-accession conflicts;
+changed cumulative overlaps, stale aggregate rejection, earlier market-cap cutoffs,
+source/audit tampering, reported snapshot updates, publication, offline replay,
+frontend contracts and database round-trip retention of original/revised versions.
+
+Pending: live SEC/sec-api/FMP account validation and current PostgreSQL integration
+checks; broader historical 10-K discovery and coverage beyond retrieval limits;
+financial-expert examples and review of non-reliance notices, amendment purpose,
+custom taxonomies, reclassifications and accounting-policy changes; an explicit
+analyst reconciliation/approval workflow for blocked cross-filing aggregates;
+security-master/CIK changes and a complete point-in-time data system; durable
+operational ingestion ledgers, monitoring and distributed request coordination.
+These checks establish known-version numerical consistency, not a full restatement
+or audit opinion.

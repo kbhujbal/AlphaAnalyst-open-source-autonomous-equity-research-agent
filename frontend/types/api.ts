@@ -220,6 +220,9 @@ export interface components {
             };
             /** Currency */
             currency: string;
+            /** Reconciliation Checks */
+            reconciliation_checks?: components["schemas"]["RevisionOverlapCheck"][];
+            reconciliation?: components["schemas"]["FilingReconciliation"] | null;
             /** Period Methods */
             period_methods?: {
                 [key: string]: "quarters" | "annual-ytd" | "q4-plus-quarters" | "cashflow-quarters";
@@ -314,6 +317,31 @@ export interface components {
             /** Reasons */
             reasons?: string[];
         };
+        /** ContextDecision */
+        ContextDecision: {
+            /** Context Id */
+            context_id: string;
+            /** Ticker */
+            ticker: string;
+            /** Metric */
+            metric: string;
+            /** Unit */
+            unit: string;
+            /** Currency */
+            currency: string | null;
+            period: components["schemas"]["ReportingPeriod"];
+            /** Selected Observation Id */
+            selected_observation_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "single" | "equivalent" | "revised" | "ambiguous";
+            /** Versions */
+            versions: components["schemas"]["FilingVersionValue"][];
+            /** Reason */
+            reason: string;
+        };
         /**
          * DCFScenario
          * @description Analyst assumptions, never represented as historical reported facts.
@@ -362,6 +390,46 @@ export interface components {
             pdf?: string | null;
             /** Excel */
             excel?: string | null;
+        };
+        /** FilingReconciliation */
+        FilingReconciliation: {
+            /**
+             * Policy
+             * @default latest-available-overlap-v1
+             * @constant
+             */
+            policy: "latest-available-overlap-v1";
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Observation Ids */
+            observation_ids: string[];
+            /** Decisions */
+            decisions: components["schemas"]["ContextDecision"][];
+            /**
+             * Scope
+             * @default retained-sec-contexts-only
+             * @constant
+             */
+            scope: "retained-sec-contexts-only";
+        };
+        /** FilingVersionValue */
+        FilingVersionValue: {
+            /** Observation Id */
+            observation_id: string;
+            /** Accession No */
+            accession_no: string;
+            /**
+             * Filing Date
+             * Format: date
+             */
+            filing_date: string;
+            /** Accepted At */
+            accepted_at: string | null;
+            /** Value */
+            value: string;
         };
         /** FinancialObservation */
         FinancialObservation: {
@@ -583,6 +651,19 @@ export interface components {
              */
             start_method: "reported" | "prior_annual_end" | "prior_quarter_end" | "unknown";
             start_evidence?: components["schemas"]["BoundaryEvidence"] | null;
+        };
+        /** RevisionOverlapCheck */
+        RevisionOverlapCheck: {
+            /** Context Id */
+            context_id: string;
+            /** Observation Ids */
+            observation_ids: string[];
+            /** Calculated Value */
+            calculated_value: string;
+            /** Reported Value */
+            reported_value: string;
+            /** Passed */
+            passed: boolean;
         };
         /** SourcePassage */
         SourcePassage: {

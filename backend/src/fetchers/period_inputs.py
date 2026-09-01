@@ -1,18 +1,70 @@
-"""Retain explicit SEC annual/YTD duration contexts for peer period bridges."""
+"""Bounded historical interim ingestion with immutable facts and accession-level reuse."""
 import asyncio
-from src.fetchers.filings import fetch_latest_10k, fetch_latest_10q, extract_facts
+from src import cache
+from src.fetchers.filings import fetch_latest_10k, extract_facts
+from src.fetchers.filing_history import fetch_historical_10qs
+from src.fetchers.evidence_store import load_observations
+from src.fetchers.financial_store import observation_row
 from src.diagnostics import public_diagnostic
 
 
-async def fetch_period_bridge_inputs(ticker):
+class UnresolvedAmendmentError(ValueError):
+    """An amendment with unverified financial contents cannot authorize old inputs."""
+
+
+async def extract_retained_facts(filing, *, refresh=False, extractor=None):
+    key = f"sec-extraction:v1:{filing.ticker}:{filing.accession_no}"
+    ids = None if refresh else await cache.get_json(key)
+    if isinstance(ids, list) and ids and len(ids) <= 10000 and all(isinstance(value, str) for value in ids):
+        retained = await load_observations(set(ids))
+        if set(retained) == set(ids) and all(o.ticker == filing.ticker and o.source.accession_no == filing.accession_no
+            and o.source.filing_date == filing.filing_date and o.source.document_url == filing.raw_url
+            and o.source.accepted_at == filing.accepted_at for o in retained.values()):
+            try:
+                for fact in retained.values(): observation_row(fact)
+                return [retained[value] for value in ids]
+            except ValueError:
+                pass
+    facts = await (extractor or extract_facts)(filing)
+    if not isinstance(facts, list) or not facts or any(o.ticker != filing.ticker or o.source.accession_no != filing.accession_no
+            or o.source.filing_date != filing.filing_date or o.source.document_url != filing.raw_url
+            or o.source.accepted_at != filing.accepted_at for o in facts):
+        raise ValueError("Extracted facts do not match the requested filing")
+    # extract_facts persists originals before this completeness marker is written.
+    await cache.set_json(key, list(dict.fromkeys(o.observation_id for o in facts)), ttl=86400)
+    return facts
+
+
+async def fetch_period_bridge_inputs(ticker, *, as_of=None, max_quarter_filings=12, refresh=False):
     warnings, facts = [], []
-    filings = await asyncio.gather(fetch_latest_10k(ticker), fetch_latest_10q(ticker), return_exceptions=True)
-    for filing in filings:
-        if isinstance(filing, Exception):
-            warnings.append(f"{ticker}: period-bridge filing unavailable: {public_diagnostic(str(filing))}")
-            continue
-        try:
-            facts.extend(await extract_facts(filing))
-        except Exception as exc:
-            warnings.append(f"{ticker}: period-bridge extraction unavailable: {public_diagnostic(str(exc))}")
-    return facts, warnings
+    annual, history = await asyncio.gather(fetch_latest_10k(ticker),
+        fetch_historical_10qs(ticker, as_of=as_of, max_filings=max_quarter_filings, refresh=refresh), return_exceptions=True)
+    filings = []
+    if isinstance(annual, Exception):
+        warnings.append(f"{ticker}: annual anchor unavailable: {public_diagnostic(str(annual))}")
+    elif as_of is None or annual.filing_date <= as_of:
+        filings.append(annual)
+    if isinstance(history, Exception):
+        warnings.append(f"{ticker}: historical quarterly discovery unavailable: {public_diagnostic(str(history))}")
+    else:
+        warnings.extend(f"{ticker}: {warning}" for warning in history.warnings)
+        filings.extend(history.filings)
+    unique = {filing.accession_no:filing for filing in filings}
+    gate = asyncio.Semaphore(2)
+    async def ingest(filing):
+        async with gate:
+            return await extract_retained_facts(filing, refresh=refresh)
+    ordered = sorted(unique.values(), key=lambda f:(f.filing_date, f.accession_no))
+    results = await asyncio.gather(*(ingest(filing) for filing in ordered), return_exceptions=True)
+    unresolved = list(history.unresolved_amendments) if not isinstance(history, Exception) else []
+    for filing, result in zip(ordered, results):
+        if isinstance(result, Exception):
+            if filing.filing_type == "10-Q/A": unresolved.append(filing.accession_no)
+            warnings.append(f"{ticker}: {filing.filing_type} {filing.accession_no} extraction unavailable: {public_diagnostic(str(result))}; existing versions retained")
+        else:
+            facts.extend(result)
+            if filing.filing_type == "10-Q/A":
+                warnings.append(f"{ticker}: amendment {filing.accession_no} retained; normalized-context reconciliation is not a formal accounting restatement review")
+    if unresolved:
+        raise UnresolvedAmendmentError(f"{ticker}: unresolved 10-Q/A {', '.join(unresolved)}; quantitative inputs withheld until amendment contents are verified")
+    return list({o.observation_id:o for o in facts}.values()), warnings

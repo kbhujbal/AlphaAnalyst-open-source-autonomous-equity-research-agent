@@ -37,7 +37,7 @@ from src.fetchers.filings import (
 )
 from src.fetchers.indexer import index_filing, index_transcript
 from src.fetchers.macro import fetch_macro_snapshot
-from src.fetchers.period_inputs import fetch_period_bridge_inputs
+from src.fetchers.period_inputs import fetch_period_bridge_inputs, extract_retained_facts, UnresolvedAmendmentError
 from src.fetchers.quarterly import fetch_quarterly_income
 from src.fetchers.market_cap import fetch_market_caps
 from src.fetchers.market_data import fetch_fundamentals, fetch_peers, fetch_prices
@@ -137,9 +137,28 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
         errors.append("Calculations unavailable: fundamentals missing")
         return []
     try:
-        history = await load_company_observations(ticker)
+        historical_inputs, history_warnings = await fetch_period_bridge_inputs(ticker)
+        errors.extend(history_warnings)
+        history = list({o.observation_id:o for o in await load_company_observations(ticker) + historical_inputs}.values())
         # Pin selected current metrics to the fundamentals selection rather than
         # silently switching vendor/filing versions. Older ambiguity is surfaced.
+        preferred = list(fundamentals.observations.values())
+        from src.modeler.reconciliation import reconciled_view, context_id
+        chosen, _ = reconciled_view(preferred, history + preferred, datetime.now(timezone.utc).date())
+        for metric, original in list(fundamentals.observations.items()):
+            matches = [o for o in chosen if context_id(o) == context_id(original)]
+            if len(matches) == 1:
+                replacement = matches[0]
+                if replacement.observation_id != original.observation_id:
+                    fundamentals.observations[metric] = replacement
+                    if hasattr(fundamentals, metric): setattr(fundamentals, metric, replacement.value)
+                    fundamentals.confidence = "low"
+                    errors.append(f"{metric}: reported snapshot updated to filing {replacement.source.accession_no}; cross-check review required")
+            else:
+                fundamentals.observations.pop(metric, None)
+                if hasattr(fundamentals, metric): setattr(fundamentals, metric, None)
+                fundamentals.confidence = "low"
+                errors.append(f"{metric}: ambiguous filing versions withheld from reported financial facts")
         preferred = list(fundamentals.observations.values())
         contexts = {(o.metric, o.period.end) for o in preferred}
         facts = [o for o in history if (o.metric, o.period.end) not in contexts] + preferred
@@ -187,10 +206,14 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
                 peer_facts[peer.ticker] = data
             except Exception as exc:
                 errors.append(f"Comparable peer {peer.ticker} unavailable: {public_diagnostic(str(exc))}")
-        traces, warnings = build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts, as_of=datetime.now(timezone.utc).date(), bridge_facts=bridge_facts, peer_bridge_facts=peer_bridge_facts)
+        traces, warnings = build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts, as_of=datetime.now(timezone.utc).date(), bridge_facts=bridge_facts, peer_bridge_facts=peer_bridge_facts, filing_universe=list({o.observation_id:o for o in bridge_facts + [o for items in peer_bridge_facts.values() for o in items]}.values()))
         errors.extend(warnings)
         return traces
     except Exception as exc:
+        if isinstance(exc, UnresolvedAmendmentError):
+            fundamentals.observations.clear()
+            fundamentals.revenue = None
+            fundamentals.confidence = "low"
         errors.append(f"Calculations unavailable: {public_diagnostic(str(exc))}")
         return []
 
@@ -246,7 +269,7 @@ async def analyze(ticker: str, *, job_id: str | None = None, dcf_scenario: DCFSc
         raise InsufficientResearchError("A current 10-K is required; no memo was published.")
     extraction_filings = [ten_k] + ([ten_q] if ten_q is not None else [])
     extraction_results = await asyncio.gather(
-        *(extract_facts(filing) for filing in extraction_filings), return_exceptions=True,
+        *(extract_retained_facts(filing, extractor=extract_facts) for filing in extraction_filings), return_exceptions=True,
     )
     for filing, result in zip(extraction_filings, extraction_results):
         if isinstance(result, Exception):
@@ -321,6 +344,8 @@ async def analyze(ticker: str, *, job_id: str | None = None, dcf_scenario: DCFSc
     # --- Step 5: valuation -----------------------------------------------
     await _set_progress(job_id, status="running", current_step="valuation")
     calculation_traces = await _build_calculations(ticker, fundamentals, peers_obj, dcf_scenario, errors)
+    if fundamentals.revenue is None:
+        raise InsufficientResearchError("Annual revenue is unresolved after filing-version reconciliation; no memo was published")
 
     # --- Step 6: devil's advocate ----------------------------------------
     devils_advocate_output: AgentOutput | None = None

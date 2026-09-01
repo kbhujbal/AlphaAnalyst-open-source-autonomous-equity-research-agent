@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from src.models.financial import FinancialObservation, ReportingPeriod, payload_hash
 from src.models.evidence import SourcePassage
+from src.models.reconciliation import FilingReconciliation, RevisionOverlapCheck
 
 
 class DCFScenario(BaseModel):
@@ -48,6 +49,8 @@ class CalculationTrace(BaseModel):
     steps: list[CalculationStep]
     outputs: dict[str, str]
     currency: str
+    reconciliation_checks: list[RevisionOverlapCheck] = Field(default_factory=list, exclude_if=lambda value: not value)
+    reconciliation: FilingReconciliation | None = Field(default=None, exclude_if=lambda value: value is None)
     period_methods: dict[str, Literal["quarters", "annual-ytd", "q4-plus-quarters", "cashflow-quarters"]] = Field(default_factory=dict, exclude_if=lambda value: not value)
     periods: dict[str, ReportingPeriod] = Field(default_factory=dict, exclude_if=lambda value: not value)
     warnings: list[str] = Field(default_factory=list)

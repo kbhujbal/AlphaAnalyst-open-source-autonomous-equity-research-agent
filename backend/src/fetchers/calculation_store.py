@@ -10,6 +10,7 @@ from src.modeler.traces import replay
 def validate_record(record):
     observations = {source.observation.observation_id: source.observation for source in record.sources}
     ids = {key for values in record.trace.bindings.values() for key in values}
+    if record.trace.reconciliation: ids.update(record.trace.reconciliation.observation_ids)
     if len(record.sources) != len(observations) or set(observations) != ids or any(not source.passages for source in record.sources):
         raise ValueError("Calculation source coverage is incomplete or duplicated")
     for source in record.sources:

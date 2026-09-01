@@ -128,3 +128,21 @@ test("period reconstruction recipes and chosen methods survive trace downloads",
   record.trace.period_methods.revenue = "sum-cumulative-quarters";
   assert.equal(MemoZ.safeParse({ ...demo.sections, calculations: [record] }).success, false);
 });
+
+
+test("filing selection audits and revision overlap checks survive downloads", () => {
+  const record = JSON.parse(readFileSync(new URL("./fixtures/calculation-record.json", import.meta.url), "utf8"));
+  record.trace.reconciliation = {
+    policy: "latest-available-overlap-v1", as_of: "2025-03-01", scope: "retained-sec-contexts-only", observation_ids: ["original", "amended"],
+    decisions: [{ context_id: "quarter", ticker: "TEST", metric: "revenue", currency: "USD", unit: "USD",
+      period: record.sources[0].observation.period, selected_observation_id: "amended", status: "revised", reason: "Latest available context selected",
+      versions: [{ observation_id: "original", accession_no: "a", filing_date: "2024-08-01", accepted_at: null, value: "25" },
+        { observation_id: "amended", accession_no: "b", filing_date: "2025-01-15", accepted_at: null, value: "35" }] }],
+  };
+  record.trace.reconciliation_checks = [{ context_id: "half", observation_ids: ["quarter1", "quarter2"], calculated_value: "55", reported_value: "55", passed: true }];
+  const memo = MemoZ.parse({ ...demo.sections, calculations: [record] });
+  assert.equal(memo.calculations[0].trace.reconciliation.decisions[0].versions[0].value, "25");
+  assert.equal(memo.calculations[0].trace.reconciliation_checks[0].reported_value, "55");
+  record.trace.reconciliation.policy = "assume-latest-is-consistent";
+  assert.equal(MemoZ.safeParse({ ...demo.sections, calculations: [record] }).success, false);
+});

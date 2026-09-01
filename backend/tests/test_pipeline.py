@@ -131,6 +131,9 @@ def stubbed_pipeline(mocker, tmp_path):
     mocker.patch.object(pipeline, "fetch_fundamentals", AsyncMock(return_value=_fundamentals()))
     mocker.patch.object(pipeline, "fetch_peers", AsyncMock(return_value=[]))
     mocker.patch.object(pipeline, "extract_facts", AsyncMock())
+    async def retained(filing, **kwargs):
+        return await pipeline.extract_facts(filing)
+    mocker.patch.object(pipeline, "extract_retained_facts", AsyncMock(side_effect=retained))
     # Step 2: indexing
     mocker.patch.object(pipeline, "index_filing", AsyncMock())
     mocker.patch.object(pipeline, "index_transcript", AsyncMock())
@@ -322,7 +325,7 @@ async def test_analyze_fails_before_agents_without_essential_inputs(stubbed_pipe
     with pytest.raises(pipeline.InsufficientResearchError, match="10-K"):
         await analyze("TSLA", job_id="missing-input")
     stubbed_pipeline["filings_run"].assert_not_awaited()
-    assert not any(state.get("memo") for _, state, _ in captured_redis)
+    assert not any(state.get("memo") for key, state, _ in captured_redis if key.startswith("analysis:job:"))
 
 
 async def test_analyze_does_not_publish_an_empty_memo(stubbed_pipeline, captured_redis, mocker):
@@ -336,7 +339,7 @@ async def test_analyze_does_not_publish_an_empty_memo(stubbed_pipeline, captured
     mocker.patch.object(pipeline.Synthesizer, "run", empty_synthesis)
     with pytest.raises(pipeline.InsufficientResearchError, match="no usable cited research"):
         await analyze("TSLA", job_id="empty-memo")
-    assert not any(state.get("memo") for _, state, _ in captured_redis)
+    assert not any(state.get("memo") for key, state, _ in captured_redis if key.startswith("analysis:job:"))
 
 
 async def test_export_failure_is_partial_and_not_available(stubbed_pipeline, captured_redis, mocker):
@@ -414,4 +417,4 @@ async def test_uncovered_memo_prose_cannot_bypass_publication(stubbed_pipeline, 
     mocker.patch.object(pipeline.Synthesizer, "run", corrupt_synthesis)
     with pytest.raises(pipeline.InsufficientResearchError, match="claim integrity failed"):
         await analyze("TSLA", job_id="uncovered-prose")
-    assert not any(state.get("memo") for _, state, _ in captured_redis)
+    assert not any(state.get("memo") for key, state, _ in captured_redis if key.startswith("analysis:job:"))

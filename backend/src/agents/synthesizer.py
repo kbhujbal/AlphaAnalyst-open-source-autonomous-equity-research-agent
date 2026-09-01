@@ -115,7 +115,9 @@ def _format_facts(facts: list[_Fact]) -> str:
          "calculation": calculation_assertion(fact.calculation, fact.calculation_output).model_dump(mode="json") if fact.calculation else None,
          "scenario": fact.calculation.trace.scenario.model_dump(mode="json") if fact.calculation and fact.calculation.trace.scenario else None,
          "assertion": assertion_for(fact.observation).model_dump(mode="json") if fact.observation else None,
+         "filing_policy": fact.calculation.trace.reconciliation.policy if fact.calculation and fact.calculation.trace.reconciliation else None,
          "passages": [{"text": p.text, "scope": p.scope, "source_url": p.source_url,
+                        "filing_selection": ("selected" if any(d.selected_observation_id == p.source_id for d in fact.calculation.trace.reconciliation.decisions) else "retained alternative; not a current selected fact") if fact.calculation and fact.calculation.trace.reconciliation and p.source_id in fact.calculation.trace.reconciliation.observation_ids else "source or boundary evidence",
                         "document_id": p.document_id, "start": p.start, "end": p.end} for p in fact.passages]}
         for fact in facts if fact.verified
     ], ensure_ascii=False)

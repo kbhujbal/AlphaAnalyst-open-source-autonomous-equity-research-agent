@@ -65,6 +65,17 @@ const DCFScenarioZ = z.object({
   fcff_margin: z.string(), projection_years: z.number().int(),
 });
 
+const FilingReconciliationZ = z.object({
+  policy: z.literal("latest-available-overlap-v1"), as_of: z.string(), scope: z.literal("retained-sec-contexts-only"),
+  observation_ids: z.array(z.string()), decisions: z.array(z.object({
+    context_id: z.string(), ticker: z.string(), metric: z.string(), unit: z.string(), currency: z.string().nullable(),
+    period: FinancialObservationZ.shape.period, selected_observation_id: z.string().nullable(),
+    status: z.enum(["single", "equivalent", "revised", "ambiguous"]), reason: z.string(),
+    versions: z.array(z.object({ observation_id: z.string(), accession_no: z.string(), filing_date: z.string(),
+      accepted_at: z.string().nullable(), value: z.string() })),
+  })),
+}) satisfies z.ZodType<components["schemas"]["FilingReconciliation"]>;
+
 const CalculationTraceZ = z.object({
   engine: z.literal("decimal-28-half-even-v1"),
   recipe: z.enum(["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1", "ttm-income-v1", "comps-ttm-v1", "q4-v1", "ttm-ytd-v1", "cashflow-difference-v1", "ttm-flex-v1", "comps-flex-v1"]),
@@ -72,6 +83,9 @@ const CalculationTraceZ = z.object({
   valuation_date: z.string().nullable().optional(), currency: z.string(), calculation_id: z.string(),
   steps: z.array(z.object({ node: z.string(), operation: z.string(), inputs: z.array(z.string()).default([]),
     value: z.string(), unit: z.string(), observation_id: z.string().nullable().optional(), note: z.string().nullable().optional() })),
+  reconciliation_checks: z.array(z.object({ context_id: z.string(), observation_ids: z.array(z.string()),
+    calculated_value: z.string(), reported_value: z.string(), passed: z.boolean() })).optional(),
+  reconciliation: FilingReconciliationZ.nullable().optional(),
   period_methods: z.record(z.enum(["quarters", "annual-ytd", "q4-plus-quarters", "cashflow-quarters"])).optional(),
   periods: z.record(z.object({
     kind: z.enum(["instant", "duration", "unknown"]), start: z.string().nullable().optional(), end: z.string().nullable().optional(),

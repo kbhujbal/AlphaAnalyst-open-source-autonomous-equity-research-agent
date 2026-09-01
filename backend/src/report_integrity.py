@@ -26,6 +26,7 @@ def memo_integrity_errors(memo) -> list[str]:
                 raise ValueError("Wrong company")
             observations = {source.observation.observation_id: source.observation for source in record.sources}
             required = {key for ids in record.trace.bindings.values() for key in ids}
+            if record.trace.reconciliation: required.update(record.trace.reconciliation.observation_ids)
             if set(observations) != required or len(observations) != len(record.sources) or any(not source.passages for source in record.sources):
                 raise ValueError("Missing or duplicate calculation source coverage")
             validate_record(record)

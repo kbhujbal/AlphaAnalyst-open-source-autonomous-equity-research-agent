@@ -8,6 +8,7 @@ from src.modeler.traces import CalculationUnavailable, replay
 
 async def verify_calculations(traces, ticker):
     ids = {key for trace in traces for values in trace.bindings.values() for key in values}
+    ids.update(key for trace in traces if trace.reconciliation for key in trace.reconciliation.observation_ids)
     observations = await evidence_store.load_observations(ids)
     records, issues = [], []
     for trace in traces:
@@ -16,7 +17,9 @@ async def verify_calculations(traces, ticker):
                 raise CalculationUnavailable("Calculation belongs to another company")
             replay(trace, observations)
             sources = []
-            for key in sorted({key for values in trace.bindings.values() for key in values}):
+            required = {key for values in trace.bindings.values() for key in values}
+            if trace.reconciliation: required.update(trace.reconciliation.observation_ids)
+            for key in sorted(required):
                 obs = observations[key]
                 fact = VerifiedFact(tag=key, text="", source_type="fact", source_id=obs.source.url, observation=obs)
                 failures = await verify_fact_sources([fact], obs.ticker)

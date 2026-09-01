@@ -27,6 +27,16 @@ export function Calculations({ records }: { records: Record[] }) {
           {source.observation.market_cap_context && <p className="text-xs text-muted-foreground">Quote currency from current listing profile captured {source.observation.market_cap_context.profile_retrieved_at}; limited to recent market dates. This is separate from financial reporting currency.</p>}
           <p className="text-xs text-muted-foreground">{source.observation.observation_id}</p>
         </div>)}</div>
+        {trace.reconciliation && <details className="mt-3">
+          <summary className="cursor-pointer">Filing selection audit ({trace.reconciliation.decisions.length} contexts)</summary>
+          <p className="mt-2 text-muted-foreground">Cutoff {trace.reconciliation.as_of}; policy {trace.reconciliation.policy}. This snapshot checks retained SEC facts. A changed reported value is not automatically a formal restatement diagnosis; accounting comparability still requires review.</p>
+          {(trace.reconciliation_checks ?? []).map(check => <p key={check.context_id} className="mt-2">Overlapping period check: selected quarters sum to {check.calculated_value}; latest reported amount {check.reported_value}; {check.passed ? "matched" : "failed"}.</p>)}
+          {trace.reconciliation.decisions.map(decision => <section key={decision.context_id} className="mt-3 border-t pt-2">
+            <p className="font-medium">{decision.ticker} {decision.metric}: {decision.status}</p>
+            <p>{decision.period.start ?? "as of"} to {decision.period.end}; {decision.reason}</p>
+            {decision.versions.map(version => <p key={version.observation_id} className="break-all text-xs">{version.value} {decision.unit}; filing {version.accession_no}; filed {version.filing_date}; accepted {version.accepted_at ?? "unknown"}; {version.observation_id === decision.selected_observation_id ? "selected" : "retained alternative"}</p>)}
+          </section>)}
+        </details>}
         <details className="mt-3"><summary className="cursor-pointer">Formula steps and sensitivity cells ({trace.steps.length})</summary>
           <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th>Node</th><th>Formula / inputs</th><th>Exact value</th><th>Unit</th></tr></thead>
             <tbody>{trace.steps.map(step => <tr key={step.node} className="border-t align-top"><td className="p-2">{step.node}</td><td className="p-2">{step.operation}({(step.inputs ?? []).join(", ")}){step.note && <p>{step.note}</p>}</td><td className="p-2">{step.value}</td><td className="p-2">{step.unit}</td></tr>)}</tbody></table></div>

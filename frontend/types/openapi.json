@@ -282,6 +282,16 @@
     "schemas": {
       "AnalyzeRequest": {
         "properties": {
+          "dcf_scenario": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DCFScenario-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "ticker": {
             "type": "string",
             "pattern": "^[A-Z]{1,5}$",
@@ -339,6 +349,203 @@
           "payload_hash"
         ],
         "title": "BoundaryEvidence"
+      },
+      "CalculationRecord": {
+        "properties": {
+          "trace": {
+            "$ref": "#/components/schemas/CalculationTrace"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/CalculationSource"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace",
+          "sources"
+        ],
+        "title": "CalculationRecord"
+      },
+      "CalculationSource": {
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/FinancialObservation"
+          },
+          "passages": {
+            "items": {
+              "$ref": "#/components/schemas/SourcePassage"
+            },
+            "type": "array",
+            "title": "Passages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "observation",
+          "passages"
+        ],
+        "title": "CalculationSource"
+      },
+      "CalculationStep": {
+        "properties": {
+          "node": {
+            "type": "string",
+            "title": "Node"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Inputs"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "observation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "node",
+          "operation",
+          "value",
+          "unit"
+        ],
+        "title": "CalculationStep"
+      },
+      "CalculationTrace": {
+        "properties": {
+          "engine": {
+            "type": "string",
+            "const": "decimal-28-half-even-v1",
+            "title": "Engine",
+            "default": "decimal-28-half-even-v1"
+          },
+          "recipe": {
+            "type": "string",
+            "enum": [
+              "growth-v1",
+              "net-margin-v1",
+              "ocf-margin-v1",
+              "dcf-fcff-v1",
+              "comps-v1"
+            ],
+            "title": "Recipe"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "bindings": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Bindings"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DCFScenario-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valuation_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Date"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/CalculationStep"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "outputs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Outputs"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "calculation_id": {
+            "type": "string",
+            "title": "Calculation Id",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recipe",
+          "ticker",
+          "bindings",
+          "steps",
+          "outputs",
+          "currency",
+          "calculation_id"
+        ],
+        "title": "CalculationTrace"
       },
       "CapturedDocument": {
         "properties": {
@@ -450,6 +657,17 @@
               }
             ],
             "title": "Observation Id"
+          },
+          "calculation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculation Id"
           }
         },
         "type": "object",
@@ -486,6 +704,7 @@
             "enum": [
               "quote",
               "financial",
+              "calculation",
               "interpretation"
             ],
             "title": "Kind"
@@ -532,6 +751,28 @@
             ],
             "title": "Observation Id"
           },
+          "calculation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculation Id"
+          },
+          "calculation_output": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculation Output"
+          },
           "checks": {
             "items": {
               "$ref": "#/components/schemas/NumericalCheck"
@@ -557,6 +798,125 @@
           "status"
         ],
         "title": "ClaimAudit"
+      },
+      "DCFScenario-Input": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 12,
+            "title": "Rationale"
+          },
+          "wacc": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Wacc"
+          },
+          "terminal_growth": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": -1.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Terminal Growth"
+          },
+          "fcff_margin": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Fcff Margin"
+          },
+          "projection_years": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 3.0,
+            "title": "Projection Years",
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "rationale",
+          "wacc",
+          "terminal_growth",
+          "fcff_margin"
+        ],
+        "title": "DCFScenario",
+        "description": "Analyst assumptions, never represented as historical reported facts."
+      },
+      "DCFScenario-Output": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 12,
+            "title": "Rationale"
+          },
+          "wacc": {
+            "type": "string",
+            "title": "Wacc"
+          },
+          "terminal_growth": {
+            "type": "string",
+            "title": "Terminal Growth"
+          },
+          "fcff_margin": {
+            "type": "string",
+            "title": "Fcff Margin"
+          },
+          "projection_years": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 3.0,
+            "title": "Projection Years",
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "rationale",
+          "wacc",
+          "terminal_growth",
+          "fcff_margin"
+        ],
+        "title": "DCFScenario",
+        "description": "Analyst assumptions, never represented as historical reported facts."
       },
       "ExportLinks": {
         "properties": {
@@ -843,6 +1203,13 @@
             },
             "type": "array",
             "title": "Citations"
+          },
+          "calculations": {
+            "items": {
+              "$ref": "#/components/schemas/CalculationRecord"
+            },
+            "type": "array",
+            "title": "Calculations"
           },
           "claim_audit": {
             "items": {

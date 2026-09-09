@@ -1,9 +1,9 @@
-"""Derive DCF inputs from upstream snapshots. Pure Python; no LLM, no I/O.
+"""Legacy experimental assumptions helper; not used by the source-linked live pipeline.
 
 WACC = risk_free_rate + beta * EQUITY_PREMIUM + news_premium
 
-EQUITY_PREMIUM is fixed at 5% per spec. The orchestrator wires
-`news_adjustment` from the NewsAgent's aggregate signal.
+EQUITY_PREMIUM is fixed at 5% per spec. New live valuations use explicit DCFScenario inputs and registered recipes.
+This helper has no source trace and cannot establish publication eligibility.
 """
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ def derive_assumptions(
     # NOTE: news_adjustment.revenue_growth_delta is intentionally not applied
     # here — DCFInputs (per spec) has no `growth_override` field, so the only
     # way to embed it is by mutating revenue_history, which is misleading.
-    # The orchestrator applies it directly when constructing the DCF.
+    # The source-linked live pipeline does not use these news adjustments.
     _ = news_adjustment.revenue_growth_delta
 
     return DCFInputs(

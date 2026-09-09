@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.models.calculation import CalculationAssertion
+
 Section = Literal["executive_summary", "financial_snapshot", "recent_catalysts", "valuation", "earnings_call_tone_shift", "alt_data_signals", "bull_case", "bear_case", "risks"]
 SECTIONS = tuple(Section.__args__)
 
@@ -25,10 +27,11 @@ class NumericalAssertion(BaseModel):
 class DraftClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
     section: Section
-    kind: Literal["quote", "financial", "interpretation"]
+    kind: Literal["quote", "financial", "calculation", "interpretation"]
     text: str = Field(max_length=5000)
     citations: list[str] = Field(default_factory=list, max_length=12)
     assertion: NumericalAssertion | None = None
+    calculation: CalculationAssertion | None = None
 
 
 class DraftMemo(BaseModel):
@@ -47,11 +50,13 @@ class NumericalCheck(BaseModel):
 class ClaimAudit(BaseModel):
     claim_id: str
     section: Section
-    kind: Literal["quote", "financial", "interpretation"]
+    kind: Literal["quote", "financial", "calculation", "interpretation"]
     proposed_text: str
     rendered_text: str | None = None
     citations: list[str]
     status: Literal["verified", "needs_review", "rejected"]
     observation_id: str | None = None
+    calculation_id: str | None = None
+    calculation_output: str | None = None
     checks: list[NumericalCheck] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)

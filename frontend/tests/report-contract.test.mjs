@@ -81,3 +81,15 @@ test("legacy reports cannot acquire verification status through defaults", () =>
   assert.deepEqual(memo.claim_audit, []);
   assert.deepEqual(memo.citations[0].passages, []);
 });
+
+
+test("calculation contracts retain exact decimals, recipe identities and source passages", () => {
+  const record = JSON.parse(readFileSync(new URL("./fixtures/calculation-record.json", import.meta.url), "utf8"));
+  const memo = MemoZ.parse({ ...demo.sections, calculations: [record] });
+  assert.equal(memo.calculations[0].trace.calculation_id, record.trace.calculation_id);
+  assert.equal(memo.calculations[0].trace.steps[0].value, "100");
+  assert.equal(memo.calculations[0].sources[0].passages[0].text, record.sources[0].passages[0].text);
+  assert.equal(MemoZ.parse(demo.sections).calculations.length, 0);
+  record.trace.recipe = "unregistered-formula";
+  assert.equal(MemoZ.safeParse({ ...demo.sections, calculations: [record] }).success, false);
+});

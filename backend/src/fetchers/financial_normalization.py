@@ -9,7 +9,7 @@ from src.models.financial import BoundaryEvidence, FinancialObservation, Observa
 
 FIELDS = {
     "income-statement": {"revenue": ("revenue",), "eps": ("epsDiluted", "epsdiluted"), "net_income": ("netIncome",)},
-    "balance-sheet-statement": {"total_assets": ("totalAssets",), "total_liabilities": ("totalLiabilities",)},
+    "balance-sheet-statement": {"total_assets": ("totalAssets",), "total_liabilities": ("totalLiabilities",), "total_debt": ("totalDebt",), "cash": ("cashAndCashEquivalents",), "shares_outstanding": ("commonStockSharesOutstanding",)},
     "cash-flow-statement": {"operating_cash_flow": ("operatingCashFlow",)},
     "key-metrics-ttm": {"market_cap": ("marketCap", "marketCapTTM"), "pe_ttm": ("peRatioTTM",)},
 }
@@ -86,7 +86,9 @@ def normalize_fmp(ticker: str, rows: list[dict], statement: str, fetched_at: dat
             fact_period = period
             fact_currency = currency
             unit = currency or "unknown"
-            if metric == "eps":
+            if metric == "shares_outstanding":
+                unit, fact_currency = "shares", None
+            elif metric == "eps":
                 unit = f"{currency or 'unknown'}/share"
             elif metric == "pe_ttm":
                 unit, fact_currency = "ratio", None

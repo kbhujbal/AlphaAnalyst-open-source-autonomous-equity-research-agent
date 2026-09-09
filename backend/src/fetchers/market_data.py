@@ -194,7 +194,7 @@ async def fetch_prices(ticker: str, days: int = 365) -> list[PriceBar]:
 
 async def fetch_fundamentals(ticker: str, *, refresh: bool = False) -> FundamentalSnapshot:
     ticker = ticker.upper()
-    cache_key = f"fundamentals:v2:{ticker}"
+    cache_key = f"fundamentals:v3:{ticker}"
     cached = None if refresh else await cache_get_json(cache_key)
     if cached:
         return FundamentalSnapshot.model_validate(cached)

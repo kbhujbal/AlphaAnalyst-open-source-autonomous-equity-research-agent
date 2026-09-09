@@ -14,8 +14,10 @@ const SourcePassageZ = z.object({
 const ClaimAuditZ = z.object({
   claim_id: z.string(),
   section: z.enum(["executive_summary", "financial_snapshot", "recent_catalysts", "valuation", "earnings_call_tone_shift", "alt_data_signals", "bull_case", "bear_case", "risks"]),
-  kind: z.enum(["quote", "financial", "interpretation"]), proposed_text: z.string(), rendered_text: z.string().nullable().optional(),
+  kind: z.enum(["quote", "financial", "calculation", "interpretation"]), proposed_text: z.string(), rendered_text: z.string().nullable().optional(),
   observation_id: z.string().nullable().optional(),
+  calculation_id: z.string().nullable().optional(),
+  calculation_output: z.string().nullable().optional(),
   citations: z.array(z.string()), status: z.enum(["verified", "needs_review", "rejected"]),
   checks: z.array(z.object({ field: z.string(), claimed: z.string().nullable(), expected: z.string().nullable(), passed: z.boolean() })).default([]),
   reasons: z.array(z.string()).default([]),
@@ -27,26 +29,9 @@ const CitationZ = z.object({
   source_id: z.string(),
   snippet: z.string(),
   passages: z.array(SourcePassageZ).default([]),
+  calculation_id: z.string().nullable().optional(),
   observation_id: z.string().nullable().optional(),
 }) satisfies z.ZodType<CitationData>;
-
-export const MemoZ = z.object({
-  ticker: z.string(),
-  as_of: z.string(),
-  executive_summary: z.string(),
-  financial_snapshot: z.string(),
-  recent_catalysts: z.string(),
-  valuation: z.string(),
-  earnings_call_tone_shift: z.string(),
-  alt_data_signals: z.string(),
-  bull_case: z.string(),
-  bear_case: z.string(),
-  risks: z.string(),
-  citations: z.array(CitationZ).default([]),
-  claim_audit: z.array(ClaimAuditZ).default([]),
-  verification_version: z.literal("claim-v1").nullable().default(null),
-  verification_issues: z.array(z.string()).default([]),
-}) satisfies z.ZodType<Memo, z.ZodTypeDef, components["schemas"]["Memo"]>;
 
 export const FinancialObservationZ = z.object({
   ticker: z.string(), metric: z.string(), tag: z.string(), value: z.string(), unit: z.string(),
@@ -70,6 +55,45 @@ export const FinancialObservationZ = z.object({
   scale: z.literal(1), reported_decimals: z.string().nullable().optional(),
   quality_flags: z.array(z.string()).optional(),
 }) satisfies z.ZodType<components["schemas"]["FinancialObservation"]>;
+
+const DCFScenarioZ = z.object({
+  name: z.string(), rationale: z.string(), wacc: z.string(), terminal_growth: z.string(),
+  fcff_margin: z.string(), projection_years: z.number().int(),
+});
+
+const CalculationTraceZ = z.object({
+  engine: z.literal("decimal-28-half-even-v1"),
+  recipe: z.enum(["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1"]),
+  ticker: z.string(), bindings: z.record(z.array(z.string())), scenario: DCFScenarioZ.nullable().optional(),
+  valuation_date: z.string().nullable().optional(), currency: z.string(), calculation_id: z.string(),
+  steps: z.array(z.object({ node: z.string(), operation: z.string(), inputs: z.array(z.string()).default([]),
+    value: z.string(), unit: z.string(), observation_id: z.string().nullable().optional(), note: z.string().nullable().optional() })),
+  outputs: z.record(z.string()), warnings: z.array(z.string()).default([]),
+}) satisfies z.ZodType<components["schemas"]["CalculationTrace"]>;
+
+const CalculationRecordZ = z.object({
+  trace: CalculationTraceZ,
+  sources: z.array(z.object({ observation: FinancialObservationZ, passages: z.array(SourcePassageZ) })),
+}) satisfies z.ZodType<components["schemas"]["CalculationRecord"]>;
+
+export const MemoZ = z.object({
+  ticker: z.string(),
+  as_of: z.string(),
+  executive_summary: z.string(),
+  financial_snapshot: z.string(),
+  recent_catalysts: z.string(),
+  valuation: z.string(),
+  earnings_call_tone_shift: z.string(),
+  alt_data_signals: z.string(),
+  bull_case: z.string(),
+  bear_case: z.string(),
+  risks: z.string(),
+  citations: z.array(CitationZ).default([]),
+  calculations: z.array(CalculationRecordZ).default([]),
+  claim_audit: z.array(ClaimAuditZ).default([]),
+  verification_version: z.literal("claim-v1").nullable().default(null),
+  verification_issues: z.array(z.string()).default([]),
+}) satisfies z.ZodType<Memo, z.ZodTypeDef, components["schemas"]["Memo"]>;
 
 export const MemoResponseZ = z.object({
   ticker: z.string(),

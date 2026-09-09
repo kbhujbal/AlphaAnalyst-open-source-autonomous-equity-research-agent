@@ -26,12 +26,12 @@ const HOW_IT_WORKS = [
   {
     step: 3,
     title: "Value",
-    body: "Experimental Python valuation and peer comparisons; assumptions require analyst review.",
+    body: "Source-linked growth, margins and valuation recipes; explicit scenario assumptions require analyst review.",
   },
   {
     step: 4,
     title: "Cite",
-    body: "Source tags connect findings to references. Claim-level verification remains incomplete.",
+    body: "Inspect retained passages and replay numerical calculations. Interpretations require analyst review.",
   },
 ];
 

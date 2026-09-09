@@ -14,6 +14,7 @@ from src import cache
 from src.diagnostics import public_diagnostic
 from src.fetchers.evidence_store import load_documents
 from src.models.evidence import CapturedDocument
+from src.models.calculation import DCFScenario
 from src.agents.synthesizer import Memo
 from src.api.schemas import (
     AnalyzeRequest,
@@ -42,10 +43,10 @@ def _export_path(state: dict[str, Any] | None, job_id: UUID, kind: str) -> Path 
     return path if state.get(f"{kind}_available") and path.is_file() else None
 
 
-async def _run_analyze(ticker: str, job_id: str) -> None:
+async def _run_analyze(ticker: str, job_id: str, dcf_scenario: DCFScenario | None = None) -> None:
     """Background task: catches every failure and writes an error state."""
     try:
-        await pipeline.analyze(ticker, job_id=job_id)
+        await pipeline.analyze(ticker, job_id=job_id, **({"dcf_scenario": dcf_scenario} if dcf_scenario else {}))
     except pipeline.CostCapExceededError as exc:
         logger.warning("cost cap exceeded for %s job=%s: %s", ticker, job_id, exc)
         await cache.set_json(
@@ -101,7 +102,7 @@ async def post_analyze(
     }
     await cache.set_json(JOB_KEY.format(job_id=job_id), initial, ttl=86400)
     # TODO Phase 17: switch BackgroundTasks → Celery for production reliability.
-    background.add_task(_run_analyze, req.ticker, str(job_id))
+    background.add_task(_run_analyze, req.ticker, str(job_id), req.dcf_scenario)
     return AnalyzeResponse(job_id=job_id, status="queued")
 
 
@@ -151,6 +152,10 @@ async def get_memo(job_id: UUID) -> MemoResponse:
     for citation in memo.citations:
         for passage in citation.passages:
             passage.snapshot_url = f"/api/v1/memos/{job_id}/evidence/{passage.document_id}"
+    for record in memo.calculations:
+        for source in record.sources:
+            for passage in source.passages:
+                passage.snapshot_url = f"/api/v1/memos/{job_id}/evidence/{passage.document_id}"
     completed_at_raw = state.get("completed_at")
     generated_at = (
         datetime.fromisoformat(completed_at_raw)
@@ -218,11 +223,12 @@ async def get_evidence_snapshot(job_id: UUID, document_id: str) -> CapturedDocum
         raise HTTPException(status_code=404, detail="evidence not found")
     memo = Memo.model_validate(state["memo"])
     allowed = {p.document_id for citation in memo.citations for p in citation.passages}
+    allowed.update(p.document_id for record in memo.calculations for source in record.sources for p in source.passages)
     if memo.verification_version != "claim-v1" or document_id not in allowed:
         raise HTTPException(status_code=404, detail="evidence not found")
     documents = await load_documents({document_id})
     document = documents.get(document_id)
-    if document is None or document.ticker != memo.ticker:
+    if document is None or document.ticker not in ({memo.ticker} | {source.observation.ticker for record in memo.calculations for source in record.sources if document_id in {p.document_id for p in source.passages}}):
         raise HTTPException(status_code=404, detail="evidence not found")
     return document
 

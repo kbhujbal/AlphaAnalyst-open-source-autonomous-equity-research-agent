@@ -11,6 +11,7 @@ import {
 import type { MemoResponse } from "@/lib/api/client";
 import { MemoZ, buildTagMap } from "@/lib/api/memo-schema";
 
+import { Calculations } from "@/components/memo/calculations";
 import { FinancialFacts } from "./financial-facts";
 import { ExportButtons } from "./export-buttons";
 import { CatalystsSection } from "./sections/catalysts-section";
@@ -64,7 +65,7 @@ export function MemoView({ response }: MemoViewProps) {
 
         <section className="mb-6 space-y-2 rounded-lg border p-4 text-sm" aria-label="Report quality">
           <p className="font-semibold">{response.status === "partial" ? "Partial report: coverage gaps require review" : "Processing complete: analyst review required"}</p>
-          <p>Research prototype. Valuation is experimental. {memo.verification_version === "claim-v1" ? "Quotes match retained text; checked financial statements match source observations. Interpretations require analyst review." : "This legacy report has no claim-level verification audit and is unverified."}</p>
+          <p>Research prototype. Valuation is experimental. {memo.verification_version === "claim-v1" ? "Quotes match retained text; checked financial statements match source observations; calculation traces replay from their inputs. Scenario assumptions and interpretations require analyst review." : "This legacy report has no claim-level verification audit and is unverified."}</p>
           {(response.warnings ?? []).length > 0 ? (
             <ul className="list-disc space-y-1 pl-5">
               {response.warnings!.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}
@@ -78,7 +79,7 @@ export function MemoView({ response }: MemoViewProps) {
             <div className="mt-3 space-y-4">
               {memo.claim_audit.map((claim) => (
                 <section key={claim.claim_id} className="border-t pt-3">
-                  <p className="font-medium">{claim.claim_id}: {claim.status === "verified" ? (claim.kind === "quote" ? "Exact quote checked" : "Financial assertion checked") : claim.status === "rejected" ? "Rejected — withheld from report" : "Interpretation — review required"}</p>
+                  <p className="font-medium">{claim.claim_id}: {claim.status === "verified" ? (claim.kind === "quote" ? "Exact quote checked" : claim.kind === "calculation" ? "Calculation replay checked" : "Financial assertion checked") : claim.status === "rejected" ? "Rejected — withheld from report" : "Interpretation — review required"}</p>
                   <p>{claim.status === "rejected" ? claim.proposed_text || "Structured financial assertion rejected" : claim.rendered_text}</p>
                   {(claim.reasons ?? []).map((reason, index) => <p className="text-muted-foreground" key={index}>{reason}</p>)}
                   {(claim.checks ?? []).map((check) => <p className="text-xs" key={check.field}>{check.field}: {check.passed ? "match" : "mismatch"}; claimed {check.claimed ?? "unknown"}; source {check.expected ?? "unknown"}</p>)}
@@ -87,6 +88,8 @@ export function MemoView({ response }: MemoViewProps) {
             </div>
           )}
         </details>
+
+        <Calculations records={memo.calculations} />
 
         <Tabs defaultValue="summary">
           <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">

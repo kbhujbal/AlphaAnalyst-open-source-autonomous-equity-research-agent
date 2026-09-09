@@ -60,6 +60,7 @@ def export_pdf(memo: Memo, path: Path, *, warnings: list[str] | None = None) -> 
     story.append(Paragraph(
         "Research prototype. Valuation is experimental. Exact quotes and structured financial "
         "assertions receive deterministic checks when a claim-v1 audit is present. "
+        "Calculation traces replay from source inputs; scenario assumptions require review. "
         "Interpretations require analyst review; legacy reports remain unverified.",
         styles["BodyText"],
     ))
@@ -90,6 +91,21 @@ def export_pdf(memo: Memo, path: Path, *, warnings: list[str] | None = None) -> 
                     f"hash {passage.document_hash}; Unicode offsets [{passage.start}, {passage.end}); "
                     f"retrieved {passage.retrieved_at.isoformat()}"
                 ), styles["BodyText"]))
+    if memo.calculations:
+        story.append(PageBreak())
+        story.append(Paragraph("Reproducible calculations", styles["Heading2"]))
+        for record in memo.calculations:
+            trace = record.trace
+            story.append(Paragraph(escape(f"{trace.recipe}: {trace.calculation_id}; {trace.engine}"), styles["Heading3"]))
+            if trace.scenario:
+                story.append(Paragraph(escape(f"Scenario {trace.scenario.name}: {trace.scenario.rationale}"), styles["BodyText"]))
+            for warning in trace.warnings:
+                story.append(Paragraph(escape(warning), styles["BodyText"]))
+            for source in record.sources:
+                o = source.observation
+                story.append(Paragraph(escape(f"Source {o.observation_id}: {o.ticker} {o.metric}, {o.value} {o.unit}, {o.period.start} to {o.period.end}; {o.source.url}; payload {o.payload_hash}"), styles["BodyText"]))
+            for step in trace.steps:
+                story.append(Paragraph(escape(f"{step.node} = {step.operation}({', '.join(step.inputs)}) = {step.value} {step.unit}; source {step.observation_id or 'none'}; {step.note or ''}"), styles["BodyText"]))
     if memo.claim_audit:
         story.append(PageBreak())
         story.append(Paragraph("Claim verification audit", styles["Heading2"]))
@@ -112,6 +128,7 @@ def export_excel(
     dcf_result: DCFResult,
     sensitivity_table: dict[str, dict[str, Decimal]] | None,
     path: Path,
+    *, calculation=None,
 ) -> None:
     from openpyxl import Workbook
 
@@ -189,5 +206,24 @@ def export_excel(
                 v = row.get(g)
                 ws_s.cell(row=i + 2, column=j + 2, value=_to_float(v))
 
+    if calculation is not None:
+        trace = calculation.trace
+        notice["A4"] = f"Source-linked scenario: {trace.calculation_id}; {trace.engine}"
+        notice["A5"] = trace.scenario.rationale
+        ws_trace = wb.create_sheet("Calculation trace")
+        ws_trace.append(["Node", "Operation", "Input nodes", "Exact Decimal value", "Unit", "Observation ID", "Assumption / note"])
+        for step in trace.steps:
+            ws_trace.append([step.node, step.operation, ", ".join(step.inputs), str(step.value), step.unit, step.observation_id, step.note])
+        ws_sources = wb.create_sheet("Source observations")
+        ws_sources.append(["Observation ID", "Ticker", "Metric", "Exact value", "Unit", "Period start", "Period end", "Source", "Payload SHA-256", "Captured documents"])
+        for source in calculation.sources:
+            o = source.observation
+            ws_sources.append([o.observation_id, o.ticker, o.metric, str(o.value), o.unit, str(o.period.start or ""), str(o.period.end), o.source.url, o.payload_hash, ", ".join(p.document_id for p in source.passages)])
+        # Provider/analyst text is data, including any leading formula characters.
+        for sheet in (ws_trace, ws_sources):
+            for row in sheet:
+                for cell in row:
+                    if isinstance(cell.value, str):
+                        cell.data_type = "s"
     wb.save(str(path))
     logger.info("wrote Excel model to %s", path)

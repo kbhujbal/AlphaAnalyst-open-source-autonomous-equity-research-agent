@@ -190,10 +190,12 @@ def stubbed_pipeline(mocker, tmp_path):
 
     mocker.patch.object(pipeline.Synthesizer, "run", _synth_run)
 
+    mocker.patch.object(pipeline, "load_company_observations", AsyncMock(return_value=[]))
+
     # Exporters
     mocker.patch.object(pipeline, "_job_dir", lambda jid: tmp_path / jid)
     mocker.patch.object(pipeline, "export_pdf", lambda memo, path, **kwargs: path.write_bytes(b"%PDF-test"))
-    mocker.patch.object(pipeline, "export_excel", lambda dcf, sens, path: path.write_bytes(b"xlsx-test"))
+    mocker.patch.object(pipeline, "export_excel", lambda dcf, sens, path, **kwargs: path.write_bytes(b"xlsx-test"))
 
     return {
         "filings_run": filings_run,
@@ -303,34 +305,6 @@ async def test_analyze_continues_when_one_fetch_fails(
     assert any("FMP down" in e for e in final.get("errors", []))
 
 
-# ---- NewsAdjustment derivation ------------------------------------------
-
-
-def test_derive_news_adjustment_parses_net_sentiment() -> None:
-    out = AgentOutput(
-        agent_name="news_agent",
-        ticker="TSLA",
-        findings=[
-            Finding(
-                claim="News signal for TSLA: net_sentiment=+0.500 across 10 articles.",
-                evidence=[Citation(source_type="news", source_id="x", snippet="y")],
-                confidence="medium",
-            )
-        ],
-    )
-    adj = pipeline._derive_news_adjustment(out)
-    assert adj.revenue_growth_delta == Decimal("0.500") * Decimal("0.005")
-    assert adj.discount_rate_premium_bps == -Decimal("0.500") * Decimal("100")
-
-
-def test_derive_news_adjustment_returns_zero_when_no_summary() -> None:
-    out = AgentOutput(agent_name="news_agent", ticker="TSLA", findings=[])
-    adj = pipeline._derive_news_adjustment(out)
-    assert adj.revenue_growth_delta == Decimal("0")
-    assert adj.margin_delta == Decimal("0")
-    assert adj.discount_rate_premium_bps == Decimal("0")
-
-
 async def test_analyze_propagates_agent_errors(stubbed_pipeline, captured_redis):
     stubbed_pipeline["filings_run"].return_value.errors.append("retrieval unavailable")
     await analyze("TSLA", job_id="agent-warning")
@@ -375,11 +349,7 @@ async def test_export_failure_is_partial_and_not_available(stubbed_pipeline, cap
 
 
 async def test_complete_requires_no_known_coverage_gaps(stubbed_pipeline, captured_redis, mocker):
-    mocker.patch.object(pipeline, "_build_dcf_inputs_from_data", return_value=pipeline.DCFInputs(
-        revenue_history=[Decimal("100")], fcf_margin_history=[Decimal("0.1")],
-        wacc=Decimal("0.1"), terminal_growth=Decimal("0.025"),
-        share_count=Decimal("10"), net_debt=Decimal("0"),
-    ))
+    mocker.patch.object(pipeline, "_build_calculations", AsyncMock(return_value=[]))
     mocker.patch.object(pipeline, "fetch_news", AsyncMock(return_value=[object()]))
     transcript = Transcript(
         ticker="TSLA", year=2024, quarter=1, content="Supported research",
@@ -388,7 +358,6 @@ async def test_complete_requires_no_known_coverage_gaps(stubbed_pipeline, captur
     mocker.patch.object(pipeline, "fetch_recent_transcripts", AsyncMock(return_value=[transcript]))
     mocker.patch.object(pipeline, "fetch_estimates", AsyncMock(return_value=object()))
     mocker.patch.object(pipeline, "fetch_peers", AsyncMock(return_value=[object()]))
-    mocker.patch.object(pipeline, "_build_comps", AsyncMock(return_value={"n_peers_used": 1}))
     async def full_synthesis(self, inp):
         self.last_run_cost = Decimal(0)
         self.last_run_llm_calls = 1
@@ -405,7 +374,8 @@ async def test_complete_requires_no_known_coverage_gaps(stubbed_pipeline, captur
     state = captured_redis[-1][1]
     assert state["status"] == "complete"
     assert state["errors"] == []
-    assert state["pdf_available"] and state["excel_available"]
+    assert state["pdf_available"]
+    assert state["excel_available"] is False  # No replayed DCF means no valuation export.
 
 
 async def test_sec_extraction_precedes_refreshed_fundamentals(stubbed_pipeline, captured_redis, mocker):
@@ -423,8 +393,10 @@ async def test_sec_extraction_precedes_refreshed_fundamentals(stubbed_pipeline, 
     await analyze("TSLA", job_id="ordered-financials")
 
 
-def test_dcf_withholds_unknown_currency_or_undated_market_cap():
-    assert pipeline._build_dcf_inputs_from_data(_fundamentals(), _macro(), pipeline.NewsAdjustment(), [_bar(250)]) is None
+def test_legacy_snapshot_values_do_not_become_source_linked_calculations():
+    traces, warnings = pipeline.build_research_calculations("TSLA", list(_fundamentals().observations.values()))
+    assert traces == []
+    assert warnings
 
 
 async def test_uncovered_memo_prose_cannot_bypass_publication(stubbed_pipeline, captured_redis, mocker):

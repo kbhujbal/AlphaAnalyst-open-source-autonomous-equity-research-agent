@@ -12,6 +12,13 @@ exactly, including observation_id, metric, value, unit, currency, dates, kind an
 basis. The server renders the claim. Do not calculate growth, margins, conversions,
 rounded amounts, or ratios. Only cite the F-tag carrying that observation.
 
+calculation: text must be empty. Copy the ENTIRE supplied calculation assertion
+exactly (calculation_id, output, value, unit, currency). Cite only its own F-tag.
+The server has replayed the registered recipe and will render the result.
+Scenario valuations depend on explicit assumptions, not reported facts. Do not
+recalculate or round numbers, and do not describe a scenario as a price target.
+assertion must be null. For all other kinds calculation must be null.
+
 interpretation: text must be qualitative, with no numbers, dates, amounts,
 percentages, quantities, or embedded citation tags. assertion must be null. These
 claims are labeled as interpretations requiring analyst review; reference existence

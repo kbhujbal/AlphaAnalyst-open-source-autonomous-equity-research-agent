@@ -16,9 +16,11 @@ from pydantic import BaseModel, Field
 
 from src.agents.synthesizer import Memo
 from src.models.financial import FinancialObservation
+from src.models.calculation import DCFScenario
 
 
 class AnalyzeRequest(BaseModel):
+    dcf_scenario: DCFScenario | None = None
     ticker: str = Field(
         pattern=r"^[A-Z]{1,5}$",
         description="US stock ticker, 1-5 uppercase letters.",

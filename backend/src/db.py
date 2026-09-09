@@ -240,3 +240,14 @@ class EvidenceDocument(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     __table_args__ = (Index("ix_evidence_ticker_source", "ticker", "source_id"),)
+
+
+class CalculationRecordRow(Base):
+    __tablename__ = "calculation_records"
+    calculation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16), ForeignKey("companies.ticker"), nullable=False)
+    recipe: Mapped[str] = mapped_column(String(32), nullable=False)
+    record_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    record: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    __table_args__ = (Index("ix_calculation_ticker_recipe", "ticker", "recipe"),)

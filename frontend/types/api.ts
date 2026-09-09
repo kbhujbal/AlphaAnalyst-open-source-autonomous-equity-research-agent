@@ -129,6 +129,7 @@ export interface components {
     schemas: {
         /** AnalyzeRequest */
         AnalyzeRequest: {
+            dcf_scenario?: components["schemas"]["DCFScenario-Input"] | null;
             /**
              * Ticker
              * @description US stock ticker, 1-5 uppercase letters.
@@ -159,6 +160,70 @@ export interface components {
             locator: string;
             /** Payload Hash */
             payload_hash: string;
+        };
+        /** CalculationRecord */
+        CalculationRecord: {
+            trace: components["schemas"]["CalculationTrace"];
+            /** Sources */
+            sources: components["schemas"]["CalculationSource"][];
+        };
+        /** CalculationSource */
+        CalculationSource: {
+            observation: components["schemas"]["FinancialObservation"];
+            /** Passages */
+            passages: components["schemas"]["SourcePassage"][];
+        };
+        /** CalculationStep */
+        CalculationStep: {
+            /** Node */
+            node: string;
+            /** Operation */
+            operation: string;
+            /** Inputs */
+            inputs?: string[];
+            /** Value */
+            value: string;
+            /** Unit */
+            unit: string;
+            /** Observation Id */
+            observation_id?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** CalculationTrace */
+        CalculationTrace: {
+            /**
+             * Engine
+             * @default decimal-28-half-even-v1
+             * @constant
+             */
+            engine: "decimal-28-half-even-v1";
+            /**
+             * Recipe
+             * @enum {string}
+             */
+            recipe: "growth-v1" | "net-margin-v1" | "ocf-margin-v1" | "dcf-fcff-v1" | "comps-v1";
+            /** Ticker */
+            ticker: string;
+            /** Bindings */
+            bindings: {
+                [key: string]: string[];
+            };
+            scenario?: components["schemas"]["DCFScenario-Output"] | null;
+            /** Valuation Date */
+            valuation_date?: string | null;
+            /** Steps */
+            steps: components["schemas"]["CalculationStep"][];
+            /** Outputs */
+            outputs: {
+                [key: string]: string;
+            };
+            /** Currency */
+            currency: string;
+            /** Warnings */
+            warnings?: string[];
+            /** Calculation Id */
+            readonly calculation_id: string;
         };
         /** CapturedDocument */
         CapturedDocument: {
@@ -202,6 +267,8 @@ export interface components {
             passages?: components["schemas"]["SourcePassage"][];
             /** Observation Id */
             observation_id?: string | null;
+            /** Calculation Id */
+            calculation_id?: string | null;
         };
         /** ClaimAudit */
         ClaimAudit: {
@@ -216,7 +283,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "quote" | "financial" | "interpretation";
+            kind: "quote" | "financial" | "calculation" | "interpretation";
             /** Proposed Text */
             proposed_text: string;
             /** Rendered Text */
@@ -230,10 +297,56 @@ export interface components {
             status: "verified" | "needs_review" | "rejected";
             /** Observation Id */
             observation_id?: string | null;
+            /** Calculation Id */
+            calculation_id?: string | null;
+            /** Calculation Output */
+            calculation_output?: string | null;
             /** Checks */
             checks?: components["schemas"]["NumericalCheck"][];
             /** Reasons */
             reasons?: string[];
+        };
+        /**
+         * DCFScenario
+         * @description Analyst assumptions, never represented as historical reported facts.
+         */
+        "DCFScenario-Input": {
+            /** Name */
+            name: string;
+            /** Rationale */
+            rationale: string;
+            /** Wacc */
+            wacc: number | string;
+            /** Terminal Growth */
+            terminal_growth: number | string;
+            /** Fcff Margin */
+            fcff_margin: number | string;
+            /**
+             * Projection Years
+             * @default 5
+             */
+            projection_years: number;
+        };
+        /**
+         * DCFScenario
+         * @description Analyst assumptions, never represented as historical reported facts.
+         */
+        "DCFScenario-Output": {
+            /** Name */
+            name: string;
+            /** Rationale */
+            rationale: string;
+            /** Wacc */
+            wacc: string;
+            /** Terminal Growth */
+            terminal_growth: string;
+            /** Fcff Margin */
+            fcff_margin: string;
+            /**
+             * Projection Years
+             * @default 5
+             */
+            projection_years: number;
         };
         /** ExportLinks */
         ExportLinks: {
@@ -346,6 +459,8 @@ export interface components {
             risks: string;
             /** Citations */
             citations?: components["schemas"]["Citation"][];
+            /** Calculations */
+            calculations?: components["schemas"]["CalculationRecord"][];
             /** Claim Audit */
             claim_audit?: components["schemas"]["ClaimAudit"][];
             /** Verification Version */

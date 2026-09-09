@@ -8,6 +8,7 @@ import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DCFScenarioZ } from "@/lib/api/dcf-scenario";
 import { ApiError } from "@/lib/api/client";
 import { useStartAnalysis } from "@/lib/api/hooks";
 
@@ -46,6 +47,8 @@ export function TickerSearch() {
   const [value, setValue] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
   const mutation = useStartAnalysis();
+  const [includeScenario, setIncludeScenario] = useState(false);
+  const [scenario, setScenario] = useState({ name: "", rationale: "", wacc: "", terminal_growth: "", fcff_margin: "", projection_years: 5 });
 
   useEffect(() => {
     setRecent(readRecent());
@@ -60,8 +63,13 @@ export function TickerSearch() {
       });
       return;
     }
+    const assumptions = includeScenario ? DCFScenarioZ.safeParse(scenario) : null;
+    if (assumptions && !assumptions.success) {
+      toast.error("Check DCF assumptions", { description: assumptions.error.issues[0]?.message });
+      return;
+    }
     try {
-      const res = await mutation.mutateAsync({ ticker });
+      const res = await mutation.mutateAsync({ ticker, ...(assumptions?.success ? { dcf_scenario: assumptions.data } : {}) });
       const next = [ticker, ...recent.filter((t) => t !== ticker)].slice(
         0,
         MAX_RECENT,
@@ -111,6 +119,19 @@ export function TickerSearch() {
           {disabled ? "Starting…" : "Analyze"}
         </Button>
       </form>
+      <details className="rounded border p-3 text-left text-sm">
+        <summary className="cursor-pointer">Optional DCF scenario</summary>
+        <label className="mt-3 flex gap-2"><input type="checkbox" checked={includeScenario} disabled={disabled} onChange={e => setIncludeScenario(e.target.checked)} />Include my scenario assumptions</label>
+        <p className="mt-2 text-muted-foreground">DCF requires reported debt, cash, shares and comparable annual revenue history. Enter rates as fractions: 0.10 means 10%. FCFF margin is an unlevered cash-flow assumption, separate from operating cash flow margin.</p>
+        {includeScenario && <div className="mt-3 space-y-3">
+          {([
+            ["name", "Scenario name"], ["wacc", "WACC (fraction)"],
+            ["terminal_growth", "Terminal growth (fraction)"], ["fcff_margin", "Forecast FCFF margin (fraction)"],
+          ] as const).map(([key, label]) => <label key={key} className="block">{label}<Input value={scenario[key]} disabled={disabled} onChange={e => setScenario(previous => ({ ...previous, [key]: e.target.value }))} /></label>)}
+          <label className="block">Projection years (3–10)<Input type="number" min={3} max={10} value={scenario.projection_years} disabled={disabled} onChange={e => setScenario(previous => ({ ...previous, projection_years: Number(e.target.value) }))} /></label>
+          <label className="block">Assumption rationale<textarea className="mt-1 w-full rounded border bg-background p-2" rows={3} value={scenario.rationale} disabled={disabled} onChange={e => setScenario(previous => ({ ...previous, rationale: e.target.value }))} /></label>
+        </div>}
+      </details>
       {recent.length > 0 ? (
         <div className="flex flex-wrap items-center justify-center gap-2 text-sm">
           <span className="text-muted-foreground">Recent:</span>

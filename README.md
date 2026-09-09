@@ -211,9 +211,10 @@ five-minute cache interval; old-report amendments do not outrank newer report ye
 `MemoResponse.financial_facts` exposes the selected observations and provenance,
 without raw provider payloads. The Financials tab shows these records. Reports
 retain warnings about missing context. Monetary observations without known currency
-are withheld from the synthesis fact bundle. Valuation is withheld when necessary
-quote currency or market-cap date/currency is unverified. Comparable valuations
-exclude peers in other currencies; there is no automatic FX conversion.
+are withheld from the synthesis fact bundle. Comparables require verified
+market-cap date/currency and exclude peers in other currencies; there is no
+automatic FX conversion. The traced DCF described below requires date-matched
+debt, cash and share observations plus explicit scenario assumptions.
 
 Still pending: applying/testing migrations on a live PostgreSQL instance; provider
 account smoke tests; a larger independently reviewed company corpus; full XBRL
@@ -262,9 +263,9 @@ Derived annual start dates require the actual preceding fiscal boundary record a
 its matching hash. Original provider JSON fields are retained as source passages.
 Financial statements are rendered by Python; the LLM cannot turn an asset value
 into revenue by changing prose, add an unrelated citation, infer a currency, or
-substitute a different fiscal year. Rounded values, derived growth rates, ratios,
-FX conversions, and other new numerical calculations require future registered
-calculation traces rather than a permissive text-number match.
+substitute a different fiscal year. Rounded numerical prose and FX conversions remain unsupported. Registered
+source-linked recipes for growth, margins and valuation are described below;
+arbitrary LLM arithmetic is never accepted through a text-number match.
 
 Legacy free-text LLM responses cannot bypass this gate. Rejected claims are withheld
 from section prose and recorded in `Memo.claim_audit`. Interpretations and rejected
@@ -281,14 +282,116 @@ only when it is cited by that completed/partial claim-v1 report. The captured JS
 link is included on returned passages. Offsets use Unicode code points, not bytes
 or JavaScript UTF-16 indices. PDFs include the source identifiers and claim audit.
 
-Not yet covered by the numerical publication gate: DCF/comparables outputs, macro
-snapshots, price-return calculations, insider aggregations, or sentiment statistics.
-Those values are withheld from the verified memo evidence bundle until reproducible
-source/calculation traces exist. Experimental Excel valuation snapshots are outside
-this claim-verification contract. This conservative restriction is intentional.
+The calculation stage below extends the numerical gate to registered growth,
+margin, DCF and comparable recipes. Macro snapshots, price returns, insider
+aggregations, sentiment statistics and FX conversions still lack registered traces
+and remain outside the verified memo evidence bundle. Excel files remain snapshots;
+new traced DCF exports also include exact-value trace and source sheets.
 
 Still pending: live PostgreSQL/migration and provider-account validation, a larger
 independently labeled claim-support corpus, semantic entailment/contradiction review,
-full article retrieval, HTML/PDF table/page locators, registered derived calculations,
+full article retrieval, HTML/PDF table/page locators, additional derived calculations,
 and production access controls/retention policies. Deterministic quote and numerical
 checks do not replace a research analyst's judgment or prove investment merit.
+
+
+## Source-linked calculation recipes
+
+Apply migration `0005_calculation_records` from `backend/` before running this
+version (`uv run --frozen alembic upgrade head`). No existing reports or untraced
+valuation values are upgraded to verified calculations. A fresh analysis uses
+archived financial observations, including historical periods, and stores verified
+calculation records immutably in PostgreSQL, independently of the 24-hour job cache.
+The fundamentals cache namespace is bumped so the new balance-sheet fields are
+fetched. Normalization now retains reported total debt, cash and cash equivalents,
+and point-in-time common shares outstanding; weighted-average EPS shares are not
+substituted.
+
+Each `Memo.calculations` record includes a versioned recipe, input observation IDs,
+explicit assumptions, named formula steps, exact Decimal values, units, output
+node references, source metadata and retained source passages. A content hash
+identifies the full recipe and results. Replaying a recipe rebuilds the entire
+trace under 28-digit Decimal precision with half-even rounding, independent of the
+process-wide Decimal context. Changed steps, outputs, source bindings or assumptions
+fail verification. Changed legitimate inputs or scenarios produce a new identity.
+Before publication, observations and original payloads are independently reloaded,
+source records/passages are checked, and the registered recipe is rerun. Arbitrary
+formula text and LLM-supplied arithmetic are not executed.
+
+Initial coverage is deliberately explicit:
+
+| Recipe | Formula and conditions |
+| --- | --- |
+| `growth-v1` | Annual revenue / preceding annual revenue minus one. Requires positive values, consecutive complete annual intervals, comparable duration lengths, the same currency and no segment dimensions. This is annual growth, not a multi-year CAGR. |
+| `net-margin-v1` | Net income / revenue, with a positive revenue denominator and matching fiscal interval, currency and filing version. Negative income produces a negative margin. |
+| `ocf-margin-v1` | Operating cash flow / revenue under the same matching rules. It is labeled operating cash flow margin, never free cash flow margin. |
+| `dcf-fcff-v1` | Projects revenue using the checked annual growth rate, multiplies by an explicitly assumed unlevered FCFF margin, discounts at the explicit WACC, and applies Gordon growth. Equity equals enterprise value minus reported debt plus reported cash, divided by reported fiscal-end shares. Every projection, discount factor, equity-bridge value and valid sensitivity cell is traced. |
+| `comps-v1` | Per-peer P/S and eligible positive-income P/E, medians, and target implied market capitalization. Requires common market-cap dates, currency and exact annual fiscal intervals. Financial filing availability must be known and no later than the capitalization date; statements older than 550 days are excluded. Negative/missing income excludes P/E without suppressing valid P/S. |
+
+Ratios are stored as fractions: `0.10` means 10%, rather than ten percent being
+silently converted to a different scale. Source revisions are not averaged;
+ambiguous historical versions require explicit selection. Automatic peer fetches
+are limited to five and excluded peers receive reasons. Different capitalization
+dates form separate traces, never a blended median. Market cap / operating cash
+flow is no longer described as EV/EBITDA, and no EV/EBITDA estimate is generated.
+
+The DCF no longer derives shares from market cap divided by an unrelated price,
+uses liabilities as debt, invents missing cash, assumes a fallback historical margin,
+or adjusts valuation assumptions from generated news sentiment. It requires an
+explicit scenario. Enter one in the optional DCF scenario form, or submit:
+
+```json
+{
+  "ticker": "AAPL",
+  "dcf_scenario": {
+    "name": "Illustrative scenario",
+    "rationale": "Illustrative assumptions supplied by the analyst; not a recommendation.",
+    "wacc": "0.10",
+    "terminal_growth": "0.025",
+    "fcff_margin": "0.12",
+    "projection_years": 5
+  }
+}
+```
+
+These example assumptions are not estimated or recommended by the application.
+FCFF margin is a forecast assumption, not a reported observation or a substitute
+for an operating cash flow margin. Terminal growth must be below WACC. Missing
+scenario/source inputs withhold the DCF with an actionable warning. Scenario,
+methodology and equity-bridge limitations remain visible in partial-report warnings.
+The model uses fiscal-end debt, cash and shares and is not a current-market or
+point-in-time backtesting valuation. Preferred equity, minority interests, lease
+policy, excess cash and other equity-bridge adjustments still require review.
+
+A structured `calculation` claim must copy one exact output assertion (trace ID,
+output name, value, unit and currency) and reference its own calculation. The server
+renders its text; rounding or relabeling cannot turn a calculated scenario into an
+unqualified fact. The report-integrity gate replays calculations again and checks
+that numerical claim text, checks and references agree. The interface displays the
+trace, assumptions and source passages; source JSON is scoped to records included
+in that report. PDFs include calculation steps and source identities. Traced DCF
+Excel snapshots include exact Decimal strings and source IDs alongside the existing
+numeric presentation sheets; editing the workbook does not recalculate the model.
+
+Download trace JSON from the report and replay it without provider credentials:
+
+```bash
+backend/.venv/bin/python scripts/replay_calculation.py downloaded-trace.json
+backend/.venv/bin/python scripts/replay_calculation.py downloaded-trace.json --documents captured-sources/
+```
+
+The first command checks arithmetic against the included observation metadata.
+With full captured-source JSON files, the second also checks exact passages and
+original payload hashes/values. Neither proves source truth, accounting judgment,
+or investment merit. Job-scoped report URLs still expire with the job cache;
+durable records can be reloaded internally with `calculation_store.load_record`.
+An authenticated historical-record browsing API remains future work.
+
+Pending for this stage: live PostgreSQL migration/integration tests and provider
+smoke tests; a verified dated/currency-aware market-cap ingestion path (the existing
+TTM feed cannot establish that context, so normal live comparables remain withheld);
+financial expert review and a broader golden-company corpus; multi-year CAGR and
+additional profitability/leverage/return ratios; TTM and differing fiscal calendars;
+actual driver-based FCFF forecasts and reviewed WACC estimation; EV/EBITDA using real
+enterprise value and EBITDA inputs; FX/security-master support; scenario comparison,
+restatement selection, retention/access controls, and editable recalculating Excel.

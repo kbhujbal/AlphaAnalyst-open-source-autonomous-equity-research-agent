@@ -50,3 +50,17 @@ async def load_sec_observations(ticker: str, period_end: str) -> list[FinancialO
             FinancialObservationRecord.provider == "sec-api",
         ))
         return [FinancialObservation.model_validate(payload) for payload in result.scalars()]
+
+
+async def load_company_observations(ticker: str) -> list[FinancialObservation]:
+    """Use retained raw versions, including historical periods, across cache hits."""
+    async with SessionLocal() as session:
+        rows = (await session.execute(select(FinancialObservationRecord).where(
+            FinancialObservationRecord.ticker == ticker,
+        ))).scalars().all()
+    facts = []
+    for row in rows:
+        fact = FinancialObservation.model_validate({**row.observation, "raw_payload": row.raw_payload})
+        if fact.observation_id == row.observation_id:
+            facts.append(fact)
+    return facts

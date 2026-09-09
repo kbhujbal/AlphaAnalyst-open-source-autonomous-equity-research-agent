@@ -76,7 +76,7 @@ async def _validation_exc_handler(
     return JSONResponse(
         status_code=422,
         content={
-            "detail": exc.errors(),
+            "detail": [{"type": error["type"], "loc": error["loc"], "msg": error["msg"]} for error in exc.errors()],
             "code": "VALIDATION_ERROR",
             "request_id": request_id,
         },

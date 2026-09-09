@@ -372,3 +372,47 @@ async def test_unfinished_or_failed_jobs_do_not_expose_source_snapshots(client, 
     load = mocker.patch.object(routes_module, "load_documents", AsyncMock())
     assert (await client.get(f"/api/v1/memos/{job_id}/evidence/anything")).status_code == 404
     load.assert_not_awaited()
+
+
+async def test_explicit_dcf_scenario_reaches_pipeline(client, stubbed_redis, stub_pipeline):
+    from tests.test_calculations import scenario
+    assumptions = scenario()
+    response = await client.post("/api/v1/analyze", json={"ticker": "TEST", "dcf_scenario": assumptions.model_dump(mode="json")})
+    assert response.status_code == 202
+    assert stub_pipeline.call_args.kwargs["dcf_scenario"] == assumptions
+
+
+async def test_invalid_dcf_spread_is_rejected_before_job_creation(client, stubbed_redis, stub_pipeline):
+    from tests.test_calculations import scenario
+    assumptions = scenario().model_dump(mode="json")
+    assumptions["terminal_growth"] = assumptions["wacc"]
+    response = await client.post("/api/v1/analyze", json={"ticker": "TEST", "dcf_scenario": assumptions})
+    assert response.status_code == 422
+    assert not stubbed_redis
+    stub_pipeline.assert_not_called()
+
+
+async def test_report_exposes_only_included_peer_calculation_snapshots(client, stubbed_redis, mocker):
+    from tests.test_calculations import comp_inputs
+    from src.modeler.traces import calculate
+    from src.evidence_verification import record_document, record_fields
+    from src.models.calculation import CalculationRecord, CalculationSource
+    bindings, facts = comp_inputs()
+    trace = calculate("comps-v1", "TEST", bindings, facts, valuation_date=date(2025, 3, 1))
+    sources, documents = [], {}
+    for observation in facts.values():
+        document = record_document(observation, observation.raw_payload, observation.observation_id)
+        documents[document.document_id] = document
+        sources.append(CalculationSource(observation=observation, passages=record_fields(document, observation.raw_payload, ["value", "unitRef", "period"])))
+    memo = Memo.model_validate({**_stored_memo(), "ticker": "TEST", "verification_version": "claim-v1", "calculations": [CalculationRecord(trace=trace, sources=sources).model_dump(mode="json")]})
+    job = uuid4()
+    stubbed_redis[f"analysis:job:{job}"] = {"status": "partial", "memo": memo.model_dump(mode="json")}
+    mocker.patch.object(routes_module, "load_documents", AsyncMock(side_effect=lambda ids: {key: documents[key] for key in ids if key in documents}))
+    peer_source = next(source for source in sources if source.observation.ticker == "P1")
+    document_id = peer_source.passages[0].document_id
+    response = await client.get(f"/api/v1/memos/{job}")
+    assert response.status_code == 200
+    returned = next(source for source in response.json()["sections"]["calculations"][0]["sources"] if source["observation"]["observation_id"] == peer_source.observation.observation_id)
+    assert returned["passages"][0]["snapshot_url"].endswith(document_id)
+    assert (await client.get(f"/api/v1/memos/{job}/evidence/{document_id}")).status_code == 200
+    assert (await client.get(f"/api/v1/memos/{job}/evidence/{'f' * 64}")).status_code == 404

@@ -176,3 +176,31 @@ async def test_source_archive_retains_first_capture_and_detects_changed_versions
     archive = await evidence_store.load_documents({original.document_id, revised.document_id})
     assert len(archive) == 2
     assert passage_matches(passage_at(retained, 0, len(retained.text)), archive[original.document_id], "TEST")
+
+
+async def test_calculation_records_retain_replayable_source_versions(db_session, monkeypatch):
+    from src.fetchers import financial_store, evidence_store, calculation_store
+    from src.calculation_verification import verify_calculations
+    from src.modeler.traces import calculate
+    from tests.test_calculations import inputs, scenario
+    session_factory = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    for module in (financial_store, evidence_store, calculation_store):
+        monkeypatch.setattr(module, "SessionLocal", session_factory)
+    bindings, facts = inputs()
+    await financial_store.persist_observations(list(facts.values()))
+    loaded = await financial_store.load_company_observations("TEST")
+    assert len(loaded) == 5
+    assert all(o.raw_payload for o in loaded)
+    trace = calculate("dcf-fcff-v1", "TEST", bindings, facts, scenario=scenario())
+    records, issues = await verify_calculations([trace], "TEST")
+    assert not issues
+    await calculation_store.save_record(records[0])
+    await calculation_store.save_record(records[0])
+    restored = await calculation_store.load_record(trace.calculation_id)
+    assert restored.model_dump(mode="json") == records[0].model_dump(mode="json")
+    from src.db import CalculationRecordRow
+    row = await db_session.get(CalculationRecordRow, trace.calculation_id)
+    row.record_hash = "0" * 64
+    await db_session.commit()
+    with pytest.raises(ValueError, match="integrity"):
+        await calculation_store.load_record(trace.calculation_id)

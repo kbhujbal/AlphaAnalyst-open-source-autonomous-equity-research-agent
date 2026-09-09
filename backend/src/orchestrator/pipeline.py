@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import tempfile
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -41,9 +40,11 @@ from src.fetchers.macro import fetch_macro_snapshot
 from src.fetchers.market_data import fetch_fundamentals, fetch_peers, fetch_prices
 from src.fetchers.news import fetch_news
 from src.fetchers.transcripts import fetch_recent_transcripts
-from src.modeler.assumptions import NewsAdjustment, derive_assumptions
-from src.modeler.comps import comparable_multiples
-from src.modeler.dcf import DCFInputs, DCFResult, MissingDCFInputError, run_dcf
+from src.models.calculation import DCFScenario
+from src.modeler.research_calculations import build_research_calculations
+from src.modeler.traces import dcf_result_from_trace
+from src.fetchers.financial_store import load_company_observations
+from src.fetchers.calculation_store import save_record
 from src.orchestrator.exporters import export_excel, export_pdf
 from src.settings import settings
 
@@ -75,8 +76,6 @@ _PROGRESS_PCT: dict[str, int] = {
     "exporting": 95,
     "complete": 100,
 }
-
-_NET_SENT_RE = re.compile(r"net_sentiment=([+\-]?\d+(?:\.\d+)?)")
 
 EXPORTS_DIR = Path(tempfile.gettempdir()) / "alphaanalyst-exports"
 
@@ -130,116 +129,38 @@ def _check_budget(cost: Decimal) -> None:
         )
 
 
-def _derive_news_adjustment(news_output: AgentOutput) -> NewsAdjustment:
-    """Map NewsAgent's summary net_sentiment into deterministic DCF deltas.
-
-    sentiment ∈ [-1, 1] →
-      revenue_growth_delta = sentiment × 0.005   (max ±50 bps on growth)
-      margin_delta         = sentiment × 0.002   (max ±20 bps on FCF margin)
-      discount_premium_bps = -sentiment × 100    (negative news raises WACC)
-    """
-    summary = next(
-        (f for f in news_output.findings if "net_sentiment" in f.claim),
-        None,
-    )
-    if summary is None:
-        return NewsAdjustment()
-    m = _NET_SENT_RE.search(summary.claim)
-    if not m:
-        return NewsAdjustment()
-    sentiment = Decimal(m.group(1))
-    return NewsAdjustment(
-        revenue_growth_delta=sentiment * Decimal("0.005"),
-        margin_delta=sentiment * Decimal("0.002"),
-        discount_rate_premium_bps=-sentiment * Decimal("100"),
-    )
-
-
-def _build_dcf_inputs_from_data(
-    fundamentals,
-    macro,
-    news_adjustment: NewsAdjustment,
-    prices,
-) -> DCFInputs | None:
-    """Best-effort DCF inputs from a single-period fundamentals snapshot."""
-    if fundamentals is None or fundamentals.revenue is None:
-        return None
-    if fundamentals.currency != "USD" or not fundamentals.observations:
-        return None
-    cap = fundamentals.observations.get("market_cap")
-    if cap is None or cap.currency != "USD" or cap.period.kind != "instant" or cap.period.end is None:
-        return None
-    if macro is None or macro.risk_free_rate is None:
-        return None
-    if not prices:
-        return None
-    if prices[-1].currency != "USD":
-        return None
-    last_price = prices[-1].close
-    if not last_price or last_price <= 0:
-        return None
-    if fundamentals.market_cap is None or fundamentals.market_cap <= 0:
-        return None
-
-    share_count = fundamentals.market_cap / last_price
-    revenue_history = [fundamentals.revenue]
-    if (
-        fundamentals.operating_cash_flow is not None
-        and fundamentals.revenue > 0
-    ):
-        margin = fundamentals.operating_cash_flow / fundamentals.revenue
-    else:
-        margin = Decimal("0.10")
-    fcf_margin_history = [margin]
-
-    net_debt = (
-        (fundamentals.total_liabilities or Decimal(0))
-    )
-    # NOTE: a tighter net_debt would subtract cash & equivalents, but
-    # FundamentalSnapshot doesn't expose those fields yet.
-
+async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
+    if fundamentals is None:
+        errors.append("Calculations unavailable: fundamentals missing")
+        return []
     try:
-        return derive_assumptions(
-            fundamentals=fundamentals,
-            macro=macro,
-            news_adjustment=news_adjustment,
-            beta=Decimal("1"),
-            revenue_history=revenue_history,
-            fcf_margin_history=fcf_margin_history,
-            share_count=share_count,
-            net_debt=net_debt,
-        )
-    except MissingDCFInputError as exc:
-        logger.warning("derive_assumptions failed: %s", exc)
-        return None
+        history = await load_company_observations(ticker)
+        # Pin selected current metrics to the fundamentals selection rather than
+        # silently switching vendor/filing versions. Older ambiguity is surfaced.
+        preferred = list(fundamentals.observations.values())
+        contexts = {(o.metric, o.period.end) for o in preferred}
+        facts = [o for o in history if (o.metric, o.period.end) not in contexts] + preferred
+        peer_facts = {}
+        for peer in peers[:5]:
+            if peer.ticker == ticker or peer.ticker in peer_facts:
+                continue
+            try:
+                snapshot = await fetch_fundamentals(peer.ticker)
+                historical = await load_company_observations(peer.ticker)
+                selected = list(snapshot.observations.values())
+                contexts = {(o.metric, o.period.end) for o in selected}
+                peer_facts[peer.ticker] = [o for o in historical if (o.metric, o.period.end) not in contexts] + selected
+            except Exception as exc:
+                errors.append(f"Comparable peer {peer.ticker} unavailable: {public_diagnostic(str(exc))}")
+        traces, warnings = build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts)
+        errors.extend(warnings)
+        return traces
+    except Exception as exc:
+        errors.append(f"Calculations unavailable: {public_diagnostic(str(exc))}")
+        return []
 
 
-async def _build_comps(
-    ticker: str,
-    fundamentals,
-    peers_obj,
-    errors: list[str],
-) -> dict[str, Any] | None:
-    if fundamentals is None or not peers_obj:
-        return None
-    snapshots = {ticker: fundamentals}
-    # Limit to 5 peers to bound API cost.
-    peers_to_fetch = peers_obj[:5]
-    coros = [fetch_fundamentals(p.ticker) for p in peers_to_fetch]
-    results = await asyncio.gather(*coros, return_exceptions=True)
-    for peer, result in zip(peers_to_fetch, results):
-        if isinstance(result, Exception):
-            errors.append(f"peer fetch failed for {peer.ticker}: {result}")
-            continue
-        snapshots[peer.ticker] = result
-    try:
-        return comparable_multiples(ticker, peers_to_fetch, snapshots)
-    except MissingDCFInputError as exc:
-        errors.append(f"comps failed: {exc}")
-        return None
-
-
-async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
+async def analyze(ticker: str, *, job_id: str | None = None, dcf_scenario: DCFScenario | None = None) -> Memo:
     ticker = ticker.upper()
     started_at = datetime.now(timezone.utc)
     total_cost = Decimal(0)
@@ -362,27 +283,9 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
     news_output = next(
         (o for o in agent_outputs if o.agent_name == "news_agent"), None
     )
-    news_adjustment = (
-        _derive_news_adjustment(news_output) if news_output else NewsAdjustment()
-    )
-
     # --- Step 5: valuation -----------------------------------------------
     await _set_progress(job_id, status="running", current_step="valuation")
-    dcf_result: DCFResult | None = None
-    dcf_inputs = _build_dcf_inputs_from_data(
-        fundamentals, macro, news_adjustment, prices
-    )
-    if dcf_inputs is None:
-        errors.append("DCF skipped: insufficient inputs or unverified valuation date/currency")
-    else:
-        try:
-            dcf_result = run_dcf(dcf_inputs)
-        except (ValueError, MissingDCFInputError) as exc:
-            errors.append(f"run_dcf: {exc}")
-
-    comps_result = await _build_comps(ticker, fundamentals, peers_obj, errors)
-    if comps_result is None:
-        errors.append("Comparable valuation unavailable")
+    calculation_traces = await _build_calculations(ticker, fundamentals, peers_obj, dcf_scenario, errors)
 
     # --- Step 6: devil's advocate ----------------------------------------
     devils_advocate_output: AgentOutput | None = None
@@ -407,8 +310,7 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
     synth_input = SynthesizerInput(
         ticker=ticker,
         all_agent_outputs=agent_outputs,
-        dcf_result=dcf_result,
-        comps_result=comps_result,
+        calculations=calculation_traces,
         devils_advocate_output=devils_advocate_output,
         fundamentals=fundamentals,
         macro=macro,
@@ -441,6 +343,13 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
     )
     errors = list(dict.fromkeys(errors))
 
+    for record in memo.calculations:
+        await save_record(record)
+        errors.extend(record.trace.warnings)
+    errors = list(dict.fromkeys(errors))
+    dcf_record = next((record for record in memo.calculations if record.trace.recipe == "dcf-fcff-v1"), None)
+    dcf_result = dcf_result_from_trace(dcf_record.trace) if dcf_record else None
+
     # --- Exports ----------------------------------------------------------
     await _set_progress(job_id, status="running", current_step="exporting")
     pdf_path = excel_path = None
@@ -450,7 +359,7 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
         if dcf_result is not None:
             try:
                 excel_path = out_dir / "model.xlsx"
-                export_excel(dcf_result, dcf_result.sensitivity_table, excel_path)
+                export_excel(dcf_result, dcf_result.sensitivity_table, excel_path, calculation=dcf_record)
                 if not excel_path.is_file():
                     raise RuntimeError("Excel exporter did not create a file")
             except Exception as exc:

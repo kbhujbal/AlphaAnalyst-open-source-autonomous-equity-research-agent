@@ -15,6 +15,7 @@ class Citation(BaseModel):
     snippet: str
     passages: list[SourcePassage] = Field(default_factory=list)
     observation_id: str | None = None
+    calculation_id: str | None = None
 
 
 class Finding(BaseModel):

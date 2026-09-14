@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class Citation(BaseModel):
+    tag: str | None = Field(default=None, pattern=r"^F[1-9]\d*$")
     source_type: Literal[
         "filing", "transcript", "news", "fact", "price", "macro", "estimates"
     ]

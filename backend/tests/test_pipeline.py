@@ -86,7 +86,7 @@ def _agent_output(name: str, claim: str, cost: str = "0.05") -> AgentOutput:
             )
         ],
         errors=[],
-        llm_calls=1,
+        llm_calls=0 if cost == "0" else 1,
         cost_usd=Decimal(cost),
     )
 
@@ -95,7 +95,7 @@ def _memo() -> Memo:
     return Memo(
         ticker="TSLA",
         as_of=date(2024, 4, 28),
-        executive_summary="Solid quarter.",
+        executive_summary="Supported research [F1].",
         financial_snapshot="Insufficient evidence",
         recent_catalysts="Insufficient evidence",
         valuation="Insufficient evidence",
@@ -104,12 +104,12 @@ def _memo() -> Memo:
         bull_case="Insufficient evidence",
         bear_case="Insufficient evidence",
         risks="Insufficient evidence",
-        citations=[],
+        citations=[Citation(tag="F1", source_type="filing", source_id="X", snippet="Supported research")],
     )
 
 
 @pytest.fixture
-def stubbed_pipeline(mocker):
+def stubbed_pipeline(mocker, tmp_path):
     """Mock every external call in the pipeline so analyze() runs offline."""
     # Step 1: fetchers
     mocker.patch.object(pipeline, "fetch_latest_10k", AsyncMock(return_value=_filing("10-K", "A")))
@@ -183,8 +183,9 @@ def stubbed_pipeline(mocker):
     mocker.patch.object(pipeline.Synthesizer, "run", _synth_run)
 
     # Exporters
-    mocker.patch.object(pipeline, "export_pdf", lambda memo, path: None)
-    mocker.patch.object(pipeline, "export_excel", lambda dcf, sens, path: None)
+    mocker.patch.object(pipeline, "_job_dir", lambda jid: tmp_path / jid)
+    mocker.patch.object(pipeline, "export_pdf", lambda memo, path, **kwargs: path.write_bytes(b"%PDF-test"))
+    mocker.patch.object(pipeline, "export_excel", lambda dcf, sens, path: path.write_bytes(b"xlsx-test"))
 
     return {
         "filings_run": filings_run,
@@ -242,7 +243,7 @@ async def test_analyze_writes_progress_at_each_step(
     assert "exporting" in steps
     # Final state has status=complete and progress 100
     final = job_writes[-1]
-    assert final["status"] == "complete"
+    assert final["status"] == "partial"
     assert final["progress_pct"] == 100
     assert "memo" in final
     assert "cost_usd" in final
@@ -260,7 +261,7 @@ async def test_analyze_sums_cost_across_agents_and_synth(
     # filings (0.10) + news (0.05) + earnings (0.05) + market (0) + insider (0)
     # + devils_advocate (0.05) + synth (0.20) = 0.45
     assert Decimal(final["cost_usd"]) == Decimal("0.45")
-    assert final["llm_calls"] == 6
+    assert final["llm_calls"] == 5
 
 
 # ---- cost cap -------------------------------------------------------------
@@ -320,3 +321,96 @@ def test_derive_news_adjustment_returns_zero_when_no_summary() -> None:
     assert adj.revenue_growth_delta == Decimal("0")
     assert adj.margin_delta == Decimal("0")
     assert adj.discount_rate_premium_bps == Decimal("0")
+
+
+async def test_analyze_propagates_agent_errors(stubbed_pipeline, captured_redis):
+    stubbed_pipeline["filings_run"].return_value.errors.append("retrieval unavailable")
+    await analyze("TSLA", job_id="agent-warning")
+    state = captured_redis[-1][1]
+    assert state["status"] == "partial"
+    assert "filings_agent: retrieval unavailable" in state["errors"]
+
+
+async def test_analyze_fails_before_agents_without_essential_inputs(stubbed_pipeline, captured_redis, mocker):
+    mocker.patch.object(pipeline, "fetch_latest_10k", AsyncMock(side_effect=RuntimeError("provider unavailable")))
+    with pytest.raises(pipeline.InsufficientResearchError, match="10-K"):
+        await analyze("TSLA", job_id="missing-input")
+    stubbed_pipeline["filings_run"].assert_not_awaited()
+    assert not any(state.get("memo") for _, state, _ in captured_redis)
+
+
+async def test_analyze_does_not_publish_an_empty_memo(stubbed_pipeline, captured_redis, mocker):
+    async def empty_synthesis(self, inp):
+        self.last_run_cost = Decimal(0)
+        self.last_run_llm_calls = 1
+        self.last_run_failures = {}
+        memo = _memo()
+        memo.citations = []
+        return memo
+    mocker.patch.object(pipeline.Synthesizer, "run", empty_synthesis)
+    with pytest.raises(pipeline.InsufficientResearchError, match="no usable cited research"):
+        await analyze("TSLA", job_id="empty-memo")
+    assert not any(state.get("memo") for _, state, _ in captured_redis)
+
+
+async def test_export_failure_is_partial_and_not_available(stubbed_pipeline, captured_redis, mocker):
+    def broken_pdf(memo, path, **kwargs):
+        path.write_bytes(b"broken")
+        raise RuntimeError("render failed")
+    mocker.patch.object(pipeline, "export_pdf", broken_pdf)
+    await analyze("TSLA", job_id="export-failure")
+    state = captured_redis[-1][1]
+    assert state["status"] == "partial"
+    assert state["pdf_available"] is False
+    assert any("render failed" in warning for warning in state["errors"])
+    assert not (pipeline._job_dir("export-failure") / "memo.pdf").exists()
+
+
+async def test_complete_requires_no_known_coverage_gaps(stubbed_pipeline, captured_redis, mocker):
+    mocker.patch.object(pipeline, "_build_dcf_inputs_from_data", return_value=pipeline.DCFInputs(
+        revenue_history=[Decimal("100")], fcf_margin_history=[Decimal("0.1")],
+        wacc=Decimal("0.1"), terminal_growth=Decimal("0.025"),
+        share_count=Decimal("10"), net_debt=Decimal("0"),
+    ))
+    mocker.patch.object(pipeline, "fetch_news", AsyncMock(return_value=[object()]))
+    transcript = Transcript(
+        ticker="TSLA", year=2024, quarter=1, content="Supported research",
+        source=Source(provider="test", url="https://example.test", fetched_at=datetime.now(timezone.utc)),
+    )
+    mocker.patch.object(pipeline, "fetch_recent_transcripts", AsyncMock(return_value=[transcript]))
+    mocker.patch.object(pipeline, "fetch_estimates", AsyncMock(return_value=object()))
+    mocker.patch.object(pipeline, "fetch_peers", AsyncMock(return_value=[object()]))
+    mocker.patch.object(pipeline, "_build_comps", AsyncMock(return_value={"n_peers_used": 1}))
+    async def full_synthesis(self, inp):
+        self.last_run_cost = Decimal(0)
+        self.last_run_llm_calls = 1
+        self.last_run_failures = {}
+        memo = _memo()
+        for field in pipeline._SECTION_FIELDS:
+            setattr(memo, field, "Supported research [F1].")
+        return memo
+    mocker.patch.object(pipeline.Synthesizer, "run", full_synthesis)
+    await analyze("TSLA", job_id="complete-coverage")
+    state = captured_redis[-1][1]
+    assert state["status"] == "complete"
+    assert state["errors"] == []
+    assert state["pdf_available"] and state["excel_available"]
+
+
+async def test_sec_extraction_precedes_refreshed_fundamentals(stubbed_pipeline, captured_redis, mocker):
+    extracted = False
+    async def extract(filing):
+        nonlocal extracted
+        extracted = True
+        return []
+    async def fundamentals(ticker, *, refresh=False):
+        assert extracted
+        assert refresh is True
+        return _fundamentals()
+    mocker.patch.object(pipeline, "extract_facts", AsyncMock(side_effect=extract))
+    mocker.patch.object(pipeline, "fetch_fundamentals", AsyncMock(side_effect=fundamentals))
+    await analyze("TSLA", job_id="ordered-financials")
+
+
+def test_dcf_withholds_unknown_currency_or_undated_market_cap():
+    assert pipeline._build_dcf_inputs_from_data(_fundamentals(), _macro(), pipeline.NewsAdjustment(), [_bar(250)]) is None

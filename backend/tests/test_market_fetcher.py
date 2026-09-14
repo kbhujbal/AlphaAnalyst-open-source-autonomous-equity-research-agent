@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
@@ -48,11 +49,31 @@ def _income_stmt(revenue: float, eps: float, period: str = "2023-12-31") -> dict
     return {
         "date": period,
         "symbol": "TSLA",
+        "reportedCurrency": "USD",
+        "period": "FY",
+        "filingDate": "2024-01-29",
+        "finalLink": "https://www.sec.gov/test-tsla-2023.htm",
         "revenue": revenue,
         "epsdiluted": eps,
         "eps": eps,
         "netIncome": revenue * 0.10,
     }
+
+
+def _income_history(revenue, eps):
+    return [_income_stmt(revenue, eps), _income_stmt(1, 0, "2022-12-31")]
+
+
+def _sec_facts(revenue, eps):
+    from src.fetchers.filings import _parse_xbrl_to_facts
+    from src.models.filing import Filing, Source
+    from datetime import date
+    source = Source(provider="sec-api", url="https://api.sec-api.io/xbrl-to-json?accession-no=test", fetched_at=datetime.now(timezone.utc))
+    filing = Filing(ticker="TSLA", filing_type="10-K", filing_date=date(2024, 1, 29), accession_no="test", raw_url="https://www.sec.gov/test-tsla-2023.htm", source=source)
+    return _parse_xbrl_to_facts({"StatementsOfIncome": {
+        "Revenues": [{"value": str(revenue), "unitRef": "usd", "period": {"startDate": "2023-01-01", "endDate": "2023-12-31"}}],
+        "EarningsPerShareDiluted": [{"value": str(eps), "unitRef": "usd-per-shares", "period": {"startDate": "2023-01-01", "endDate": "2023-12-31"}}],
+    }}, filing, source)
 
 
 async def test_fetch_prices_returns_pricebar_list(
@@ -99,10 +120,10 @@ async def test_fetch_prices_returns_pricebar_list(
 async def test_fetch_fundamentals_high_confidence_when_fmp_and_edgar_agree(
     stub_keys, stub_persistence, stub_cache, mocker
 ) -> None:
-    income = [_income_stmt(revenue=96773000000, eps=4.30)]
+    income = _income_history(96773000000, 4.30)
     balance = [{"totalAssets": 106618000000, "totalLiabilities": 43009000000}]
     cashflow = [{"operatingCashFlow": 13256000000}]
-    metrics = [{"peRatioTTM": 60.0, "marketCapTTM": 800000000000}]
+    metrics = [{"symbol": "TSLA", "peRatioTTM": 60.0, "marketCapTTM": 800000000000}]
 
     with respx.mock:
         respx.get(
@@ -122,10 +143,7 @@ async def test_fetch_fundamentals_high_confidence_when_fmp_and_edgar_agree(
             md,
             "_load_edgar_fundamentals",
             new=AsyncMock(
-                return_value={
-                    "revenue": Decimal("96773000000"),
-                    "eps": Decimal("4.30"),
-                }
+                return_value=_sec_facts(96773000000, "4.30")
             ),
         )
 
@@ -140,6 +158,9 @@ async def test_fetch_fundamentals_high_confidence_when_fmp_and_edgar_agree(
     assert rev_div.chosen == "edgar"
     assert rev_div.relative_diff == Decimal("0")
     assert snap.source.provider == "fmp+edgar"
+    assert snap.observations["revenue"].source.provider == "sec-api"
+    assert snap.observations["revenue"].currency == "USD"
+    assert snap.observations["eps"].unit == "USD/share"
 
 
 async def test_fetch_fundamentals_low_confidence_when_diff_exceeds_one_pct(
@@ -147,7 +168,7 @@ async def test_fetch_fundamentals_low_confidence_when_diff_exceeds_one_pct(
 ) -> None:
     fmp_revenue = 100_000_000_000
     edgar_revenue = Decimal("96000000000")  # ~4% lower than FMP
-    income = [_income_stmt(revenue=fmp_revenue, eps=4.30)]
+    income = _income_history(fmp_revenue, 4.30)
 
     with respx.mock:
         respx.get(
@@ -167,10 +188,7 @@ async def test_fetch_fundamentals_low_confidence_when_diff_exceeds_one_pct(
             md,
             "_load_edgar_fundamentals",
             new=AsyncMock(
-                return_value={
-                    "revenue": edgar_revenue,
-                    "eps": Decimal("4.30"),
-                }
+                return_value=_sec_facts(edgar_revenue, "4.30")
             ),
         )
 
@@ -194,7 +212,7 @@ async def test_fetch_fundamentals_low_confidence_when_diff_exceeds_one_pct(
 async def test_fetch_fundamentals_low_confidence_when_edgar_missing(
     stub_keys, stub_persistence, stub_cache, mocker
 ) -> None:
-    income = [_income_stmt(revenue=96773000000, eps=4.30)]
+    income = _income_history(96773000000, 4.30)
 
     with respx.mock:
         respx.get(
@@ -213,7 +231,7 @@ async def test_fetch_fundamentals_low_confidence_when_edgar_missing(
         mocker.patch.object(
             md,
             "_load_edgar_fundamentals",
-            new=AsyncMock(return_value={"revenue": None, "eps": None}),
+            new=AsyncMock(return_value=[]),
         )
 
         snap = await fetch_fundamentals("TSLA")
@@ -247,7 +265,7 @@ async def test_fmp_429_retries_then_raises_rate_limit_error(
     mocker.patch.object(
         md,
         "_load_edgar_fundamentals",
-        new=AsyncMock(return_value={"revenue": None, "eps": None}),
+        new=AsyncMock(return_value=[]),
     )
 
     with respx.mock:
@@ -259,3 +277,29 @@ async def test_fmp_429_retries_then_raises_rate_limit_error(
             await fetch_fundamentals("TSLA")
 
     assert route.call_count >= 2
+
+
+async def test_incompatible_balance_and_cashflow_are_not_combined(stub_keys, stub_persistence, stub_cache, mocker):
+    income = _income_history(100, 0)
+    balance = [{**_income_stmt(100, 0), "reportedCurrency": "EUR", "totalAssets": 500}]
+    cashflow = [{**_income_stmt(100, 0), "date": "2022-12-31", "operatingCashFlow": 20}]
+    responses = {
+        "income-statement": income, "balance-sheet-statement": balance,
+        "cash-flow-statement": cashflow, "key-metrics-ttm": [],
+    }
+    mocker.patch.object(md, "_load_edgar_fundamentals", AsyncMock(return_value=[]))
+    with respx.mock:
+        for path, response in responses.items():
+            respx.get(f"https://financialmodelingprep.com/api/v3/{path}/TSLA").mock(return_value=httpx.Response(200, json=response))
+        snapshot = await fetch_fundamentals("TSLA")
+    assert snapshot.total_assets is None
+    assert snapshot.operating_cash_flow is None
+    assert snapshot.currency == "USD"
+    assert any("total_assets" in warning for warning in snapshot.warnings)
+    assert any(fact.currency == "EUR" for fact in snapshot.reported_observations)
+
+
+def test_zero_reference_cannot_hide_a_divergence():
+    _, divergence, exceeds, _ = md._cross_check("eps", Decimal("5"), Decimal("0"))
+    assert exceeds
+    assert divergence.edgar_value == 0

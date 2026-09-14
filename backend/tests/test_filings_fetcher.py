@@ -194,14 +194,14 @@ async def test_extract_facts_returns_xbrl_facts_with_decimal_values(
     assert "Assets" in by_tag
 
     revenue_2023 = next(
-        f for f in facts if f.tag == "Revenues" and f.period == "2023-12-31"
+        f for f in facts if f.tag == "Revenues" and f.period.end == date(2023, 12, 31)
     )
     assert isinstance(revenue_2023.value, Decimal)
     assert revenue_2023.value == Decimal("96773000000")
-    assert revenue_2023.unit == "usd"
+    assert revenue_2023.unit == "USD"
 
     eps = next(f for f in facts if f.tag == "EarningsPerShareDiluted")
-    assert eps.unit == "usd-per-shares"
+    assert eps.unit == "USD/share"
     assert eps.value == Decimal("4.30")
 
     stub_persistence["facts"].assert_awaited_once()

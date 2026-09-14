@@ -25,8 +25,9 @@ from src.agents.filings_agent import FilingsAgent
 from src.agents.insider_agent import InsiderAgent
 from src.agents.market_data_agent import MarketDataAgent
 from src.agents.news_agent import NewsAgent
-from src.agents.synthesizer import Memo, Synthesizer, SynthesizerInput
+from src.agents.synthesizer import Memo, Synthesizer, SynthesizerInput, _SECTION_FIELDS
 from src import cache
+from src.diagnostics import public_diagnostic
 from src.fetchers.estimates import fetch_estimates
 from src.fetchers.filings import (
     extract_facts,
@@ -50,6 +51,18 @@ logger = logging.getLogger(__name__)
 
 class CostCapExceededError(RuntimeError):
     """Raised when cumulative LLM cost crosses settings.max_cost_per_analysis."""
+
+
+class InsufficientResearchError(RuntimeError):
+    """Essential inputs or usable research are absent; do not publish a memo."""
+
+
+def _missing_sections(memo: Memo) -> list[str]:
+    return [
+        field for field in _SECTION_FIELDS
+        if not getattr(memo, field).strip()
+        or "insufficient evidence" in getattr(memo, field).lower()
+    ]
 
 
 _PROGRESS_PCT: dict[str, int] = {
@@ -150,9 +163,16 @@ def _build_dcf_inputs_from_data(
     """Best-effort DCF inputs from a single-period fundamentals snapshot."""
     if fundamentals is None or fundamentals.revenue is None:
         return None
+    if fundamentals.currency != "USD" or not fundamentals.observations:
+        return None
+    cap = fundamentals.observations.get("market_cap")
+    if cap is None or cap.currency != "USD" or cap.period.kind != "instant" or cap.period.end is None:
+        return None
     if macro is None or macro.risk_free_rate is None:
         return None
     if not prices:
+        return None
+    if prices[-1].currency != "USD":
         return None
     last_price = prices[-1].close
     if not last_price or last_price <= 0:
@@ -237,7 +257,6 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
         fetch_macro_snapshot(),
         fetch_recent_transcripts(ticker, n=4),
         fetch_estimates(ticker),
-        fetch_fundamentals(ticker),
         fetch_peers(ticker),
         return_exceptions=True,
     )
@@ -250,7 +269,6 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
         macro,
         transcripts,
         estimates,
-        fundamentals,
         peers_obj,
     ) = (
         _safe_value(fetch_results[0], None),
@@ -261,19 +279,38 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
         _safe_value(fetch_results[5], None),
         _safe_value(fetch_results[6], []),
         _safe_value(fetch_results[7], None),
-        _safe_value(fetch_results[8], None),
-        _safe_value(fetch_results[9], []),
+        _safe_value(fetch_results[8], []),
     )
     for r in fetch_results:
         if isinstance(r, Exception):
             errors.append(f"fetch step: {r}")
 
-    # XBRL extraction is bundled with the 10-K fetch but failures are non-fatal.
-    if ten_k is not None:
-        try:
-            await extract_facts(ten_k)
-        except Exception as exc:
-            errors.append(f"extract_facts(10-K): {exc}")
+    if ten_k is None:
+        raise InsufficientResearchError("A current 10-K is required; no memo was published.")
+    extraction_filings = [ten_k] + ([ten_q] if ten_q is not None else [])
+    extraction_results = await asyncio.gather(
+        *(extract_facts(filing) for filing in extraction_filings), return_exceptions=True,
+    )
+    for filing, result in zip(extraction_filings, extraction_results):
+        if isinstance(result, Exception):
+            errors.append(f"extract_facts({filing.filing_type}): {result}")
+    try:
+        # Reconcile against this run's extracted filing, not yesterday's cached facts.
+        fundamentals = await fetch_fundamentals(ticker, refresh=True)
+    except Exception as exc:
+        raise InsufficientResearchError(f"Financial observations unavailable: {exc}") from exc
+    if fundamentals.revenue is None:
+        raise InsufficientResearchError("An annual revenue observation is required; no memo was published.")
+    for label, value in (
+        ("10-Q", ten_q), ("prices", prices), ("news", news_articles),
+        ("macro snapshot", macro), ("earnings transcripts", transcripts),
+        ("analyst estimates", estimates), ("peer list", peers_obj),
+    ):
+        if not value:
+            errors.append(f"Coverage unavailable: {label}")
+    errors.extend(fundamentals.warnings)
+    if fundamentals.confidence != "high":
+        errors.append("Fundamentals cross-check has low confidence")
 
     # --- Step 2: indexing -------------------------------------------------
     await _set_progress(job_id, status="running", current_step="indexing")
@@ -309,9 +346,15 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
             errors.append(f"agent failure: {r}")
             continue
         agent_outputs.append(r)
+        errors.extend(f"{r.agent_name}: {error}" for error in r.errors)
+        if not r.findings:
+            errors.append(f"{r.agent_name}: no findings produced")
         total_cost += r.cost_usd
         total_calls += r.llm_calls
     _check_budget(total_cost)
+
+    if not any(output.findings for output in agent_outputs):
+        raise InsufficientResearchError("No research findings were produced; no memo was published.")
 
     # --- Step 4: NewsAdjustment ------------------------------------------
     news_output = next(
@@ -328,7 +371,7 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
         fundamentals, macro, news_adjustment, prices
     )
     if dcf_inputs is None:
-        errors.append("DCF skipped: insufficient inputs")
+        errors.append("DCF skipped: insufficient inputs or unverified valuation date/currency")
     else:
         try:
             dcf_result = run_dcf(dcf_inputs)
@@ -336,6 +379,8 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
             errors.append(f"run_dcf: {exc}")
 
     comps_result = await _build_comps(ticker, fundamentals, peers_obj, errors)
+    if comps_result is None:
+        errors.append("Comparable valuation unavailable")
 
     # --- Step 6: devil's advocate ----------------------------------------
     devils_advocate_output: AgentOutput | None = None
@@ -344,6 +389,9 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
         da = DevilsAdvocateAgent(prior_outputs=da_inputs)
         try:
             devils_advocate_output = await da.run(ticker)
+            errors.extend(f"devils_advocate: {error}" for error in devils_advocate_output.errors)
+            if not devils_advocate_output.findings:
+                errors.append("devils_advocate: no findings produced")
             total_cost += devils_advocate_output.cost_usd
             total_calls += devils_advocate_output.llm_calls
             _check_budget(total_cost)
@@ -369,27 +417,45 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
     total_calls += synth.last_run_llm_calls
     _check_budget(total_cost)
 
+    missing_sections = _missing_sections(memo)
+    if len(missing_sections) == len(_SECTION_FIELDS) or not memo.citations:
+        raise InsufficientResearchError(
+            "The generated memo has no usable cited research; no memo was published."
+        )
+    errors.extend(f"Insufficient evidence: {field}" for field in missing_sections)
+    errors.extend(
+        f"Synthesis validation: {field}: {'; '.join(reasons)}"
+        for field, reasons in synth.last_run_failures.items()
+    )
+    errors = list(dict.fromkeys(errors))
+
     # --- Exports ----------------------------------------------------------
     await _set_progress(job_id, status="running", current_step="exporting")
     pdf_path = excel_path = None
     if job_id is not None:
         out_dir = _job_dir(job_id)
         out_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            pdf_path = out_dir / "memo.pdf"
-            export_pdf(memo, pdf_path)
-        except Exception as exc:
-            errors.append(f"export_pdf: {exc}")
-            pdf_path = None
         if dcf_result is not None:
             try:
                 excel_path = out_dir / "model.xlsx"
-                export_excel(
-                    dcf_result, dcf_result.sensitivity_table, excel_path
-                )
+                export_excel(dcf_result, dcf_result.sensitivity_table, excel_path)
+                if not excel_path.is_file():
+                    raise RuntimeError("Excel exporter did not create a file")
             except Exception as exc:
                 errors.append(f"export_excel: {exc}")
+                if excel_path is not None:
+                    excel_path.unlink(missing_ok=True)
                 excel_path = None
+        try:
+            pdf_path = out_dir / "memo.pdf"
+            export_pdf(memo, pdf_path, warnings=[public_diagnostic(error) for error in errors])
+            if not pdf_path.is_file():
+                raise RuntimeError("PDF exporter did not create a file")
+        except Exception as exc:
+            errors.append(f"export_pdf: {exc}")
+            if pdf_path is not None:
+                pdf_path.unlink(missing_ok=True)
+            pdf_path = None
 
     # --- Final state -----------------------------------------------------
     completed_at = datetime.now(timezone.utc)
@@ -398,13 +464,14 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
             f"analysis:job:{job_id}",
             {
                 "job_id": job_id,
-                "status": "complete",
+                "status": "partial" if errors else "complete",
                 "progress_pct": 100,
                 "current_step": None,
                 "memo": memo.model_dump(mode="json"),
+                "financial_facts": [fact.model_dump(mode="json") for fact in fundamentals.observations.values()],
                 "cost_usd": str(total_cost),
                 "llm_calls": total_calls,
-                "errors": errors,
+                "errors": [public_diagnostic(error) for error in errors],
                 "started_at": started_at.isoformat(),
                 "completed_at": completed_at.isoformat(),
                 "pdf_available": pdf_path is not None,

@@ -57,7 +57,7 @@ export function SourcesSection({ memo, tagMap }: SourcesSectionProps) {
       </TableHeader>
       <TableBody>
         {memo.citations.map((citation, idx) => {
-          const tag = tagByCitation.get(citation) ?? `F${idx + 1}`;
+          const tag = tagByCitation.get(citation) ?? "Unmapped";
           return (
             <TableRow key={`${tag}-${idx}`} id={`cite-${tag}`}>
               <TableCell className="text-muted-foreground">{idx + 1}</TableCell>

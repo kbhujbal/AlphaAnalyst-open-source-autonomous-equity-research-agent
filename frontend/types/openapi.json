@@ -1,0 +1,925 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AlphaAnalyst API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/analyze": {
+      "post": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Post Analyze",
+        "operationId": "post_analyze_api_v1_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Job",
+        "operationId": "get_job_api_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memos/{job_id}": {
+      "get": {
+        "tags": [
+          "memos"
+        ],
+        "summary": "Get Memo",
+        "operationId": "get_memo_api_v1_memos__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memos/{job_id}/pdf": {
+      "get": {
+        "tags": [
+          "memos"
+        ],
+        "summary": "Get Memo Pdf",
+        "operationId": "get_memo_pdf_api_v1_memos__job_id__pdf_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memos/{job_id}/excel": {
+      "get": {
+        "tags": [
+          "memos"
+        ],
+        "summary": "Get Memo Excel",
+        "operationId": "get_memo_excel_api_v1_memos__job_id__excel_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Get Health",
+        "operationId": "get_health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalyzeRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "pattern": "^[A-Z]{1,5}$",
+            "title": "Ticker",
+            "description": "US stock ticker, 1-5 uppercase letters."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker"
+        ],
+        "title": "AnalyzeRequest"
+      },
+      "AnalyzeResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "const": "queued",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "AnalyzeResponse"
+      },
+      "BoundaryEvidence": {
+        "properties": {
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "locator": {
+            "type": "string",
+            "title": "Locator"
+          },
+          "payload_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Payload Hash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period_end",
+          "locator",
+          "payload_hash"
+        ],
+        "title": "BoundaryEvidence"
+      },
+      "Citation": {
+        "properties": {
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^F[1-9]\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          },
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "filing",
+              "transcript",
+              "news",
+              "fact",
+              "price",
+              "macro",
+              "estimates"
+            ],
+            "title": "Source Type"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_type",
+          "source_id",
+          "snippet"
+        ],
+        "title": "Citation"
+      },
+      "ExportLinks": {
+        "properties": {
+          "pdf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf"
+          },
+          "excel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excel"
+          }
+        },
+        "type": "object",
+        "title": "ExportLinks"
+      },
+      "FinancialObservation": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "metric": {
+            "type": "string",
+            "title": "Metric"
+          },
+          "tag": {
+            "type": "string",
+            "title": "Tag"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "period": {
+            "$ref": "#/components/schemas/ReportingPeriod"
+          },
+          "dimensions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Dimensions"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ObservationSource"
+          },
+          "payload_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Payload Hash"
+          },
+          "reported_decimals": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Decimals"
+          },
+          "scale": {
+            "type": "integer",
+            "const": 1,
+            "title": "Scale",
+            "default": 1
+          },
+          "quality_flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Quality Flags"
+          },
+          "observation_id": {
+            "type": "string",
+            "title": "Observation Id",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "metric",
+          "tag",
+          "value",
+          "unit",
+          "period",
+          "source",
+          "payload_hash",
+          "observation_id"
+        ],
+        "title": "FinancialObservation"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "db_ok": {
+            "type": "boolean",
+            "title": "Db Ok"
+          },
+          "redis_ok": {
+            "type": "boolean",
+            "title": "Redis Ok"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "db_ok",
+          "redis_ok"
+        ],
+        "title": "HealthResponse"
+      },
+      "JobStatus": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "complete",
+              "partial",
+              "failed",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "progress_pct": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress Pct"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "progress_pct"
+        ],
+        "title": "JobStatus"
+      },
+      "Memo": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "executive_summary": {
+            "type": "string",
+            "title": "Executive Summary"
+          },
+          "financial_snapshot": {
+            "type": "string",
+            "title": "Financial Snapshot"
+          },
+          "recent_catalysts": {
+            "type": "string",
+            "title": "Recent Catalysts"
+          },
+          "valuation": {
+            "type": "string",
+            "title": "Valuation"
+          },
+          "earnings_call_tone_shift": {
+            "type": "string",
+            "title": "Earnings Call Tone Shift"
+          },
+          "alt_data_signals": {
+            "type": "string",
+            "title": "Alt Data Signals"
+          },
+          "bull_case": {
+            "type": "string",
+            "title": "Bull Case"
+          },
+          "bear_case": {
+            "type": "string",
+            "title": "Bear Case"
+          },
+          "risks": {
+            "type": "string",
+            "title": "Risks"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "type": "array",
+            "title": "Citations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "as_of",
+          "executive_summary",
+          "financial_snapshot",
+          "recent_catalysts",
+          "valuation",
+          "earnings_call_tone_shift",
+          "alt_data_signals",
+          "bull_case",
+          "bear_case",
+          "risks"
+        ],
+        "title": "Memo"
+      },
+      "MemoResponse": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "sections": {
+            "$ref": "#/components/schemas/Memo"
+          },
+          "exports": {
+            "$ref": "#/components/schemas/ExportLinks"
+          },
+          "cost_usd": {
+            "type": "string",
+            "title": "Cost Usd"
+          },
+          "llm_calls": {
+            "type": "integer",
+            "title": "Llm Calls"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Status"
+          },
+          "financial_facts": {
+            "items": {
+              "$ref": "#/components/schemas/FinancialObservation"
+            },
+            "type": "array",
+            "title": "Financial Facts"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "generated_at",
+          "sections",
+          "exports",
+          "cost_usd",
+          "llm_calls",
+          "status"
+        ],
+        "title": "MemoResponse"
+      },
+      "ObservationSource": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At"
+          },
+          "document_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Url"
+          },
+          "accession_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accession No"
+          },
+          "filing_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filing Date"
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "locator": {
+            "type": "string",
+            "title": "Locator"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "url",
+          "fetched_at",
+          "locator"
+        ],
+        "title": "ObservationSource"
+      },
+      "ReportingPeriod": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "instant",
+              "duration",
+              "unknown"
+            ],
+            "title": "Kind"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "annual",
+              "quarterly",
+              "ytd",
+              "ttm",
+              "unknown"
+            ],
+            "title": "Basis",
+            "default": "unknown"
+          },
+          "fiscal_year": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Year"
+          },
+          "fiscal_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Period"
+          },
+          "start_method": {
+            "type": "string",
+            "enum": [
+              "reported",
+              "prior_annual_end",
+              "unknown"
+            ],
+            "title": "Start Method",
+            "default": "unknown"
+          },
+          "start_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundaryEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "ReportingPeriod"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "analysis",
+      "description": "Submit and track analyses."
+    },
+    {
+      "name": "memos",
+      "description": "Read completed memos and exports."
+    },
+    {
+      "name": "health",
+      "description": "Service health probes."
+    }
+  ]
+}

@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import select
 
 from src.clients.fmp_transcripts import FmpTranscriptsClient
+from src.db import ensure_company
 from src.db import Company
 from src.db import Document as DocumentORM
 from src.db import SessionLocal
@@ -46,9 +47,7 @@ async def _persist_transcripts(
     if not transcripts:
         return
     async with SessionLocal() as session:
-        if await session.get(Company, ticker) is None:
-            session.add(Company(ticker=ticker))
-            await session.flush()
+        await ensure_company(session, ticker)
 
         for t in transcripts:
             sid = _source_id(t.year, t.quarter)
@@ -122,7 +121,8 @@ async def fetch_recent_transcripts(
                 )
             )
 
-    await _persist_transcripts(ticker, transcripts)
+    if transcripts:
+        await _persist_transcripts(ticker, transcripts)
     return transcripts
 
 

@@ -121,7 +121,7 @@ class InsiderAgent(Agent):
                 ownership_payload = {}
 
         cutoff = today - timedelta(days=90)
-        transactions = insider_payload.get("data") or []
+        transactions = insider_payload.get("data")
         if isinstance(transactions, list):
             buys, sells, net, n = _net_insider_usd(transactions, cutoff)
             sign = "buying" if net > 0 else ("selling" if net < 0 else "flat")

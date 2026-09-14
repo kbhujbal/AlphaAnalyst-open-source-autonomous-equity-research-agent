@@ -23,7 +23,7 @@ export function FinancialsSection({ memo, tagMap }: FinancialsSectionProps) {
 
       <section>
         <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Synthesizer prose
+          Financial summary
         </h3>
         <RenderProse text={memo.financial_snapshot} tagMap={tagMap} />
       </section>

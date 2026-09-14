@@ -52,11 +52,21 @@ def comparable_multiples(
             f"snapshot missing for target ticker {target_ticker}"
         )
 
+    def eligible(snapshot: FundamentalSnapshot) -> bool:
+        cap = snapshot.observations.get("market_cap")
+        revenue = snapshot.observations.get("revenue")
+        return bool(snapshot.currency and cap and revenue and cap.currency == snapshot.currency
+                    and cap.period.kind == "instant" and cap.period.end is not None and revenue.period.start is not None
+                    and revenue.period.basis == "annual")
+
+    if not eligible(target_snap):
+        raise MissingDCFInputError("Comparable valuation requires verified currency and market-cap date")
+
     peer_snaps: list[FundamentalSnapshot] = []
     missing_peers: list[str] = []
     for peer in peers:
         s = snapshots.get(peer.ticker.upper())
-        if s is None:
+        if s is None or not eligible(s) or s.currency != target_snap.currency:
             missing_peers.append(peer.ticker)
         else:
             peer_snaps.append(s)
@@ -99,6 +109,7 @@ def comparable_multiples(
 
     return {
         "target_ticker": target_key,
+        "currency": target_snap.currency,
         "peer_medians": medians,
         "implied_market_cap": implied,
         "n_peers_used": len(peer_snaps),

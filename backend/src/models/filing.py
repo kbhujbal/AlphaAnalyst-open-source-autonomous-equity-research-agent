@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
-
-class Source(BaseModel):
-    provider: str
-    url: str
-    fetched_at: datetime
+from .source import Source
+from .financial import FinancialObservation as XBRLFact
 
 
 class FilingSummary(BaseModel):
@@ -20,6 +16,8 @@ class FilingSummary(BaseModel):
     filing_date: date
     accession_no: str
     primary_document: str | None = None
+    report_date: date | None = None
+    accepted_at: datetime | None = None
     source: Source
 
 
@@ -32,15 +30,6 @@ class Filing(BaseModel):
     accession_no: str
     raw_url: str
     primary_document: str | None = None
-    source: Source
-
-
-class XBRLFact(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    ticker: str
-    period: str
-    tag: str
-    value: Decimal
-    unit: str
+    report_date: date | None = None
+    accepted_at: datetime | None = None
     source: Source

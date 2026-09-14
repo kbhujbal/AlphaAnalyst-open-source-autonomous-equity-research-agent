@@ -19,7 +19,7 @@ from sqlalchemy import (
     func,
     text as sql_text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -192,3 +192,34 @@ class Document(Base):
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with SessionLocal() as session:
         yield session
+
+
+class FinancialObservationRecord(Base):
+    __tablename__ = "financial_observations"
+
+    observation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16), ForeignKey("companies.ticker"), nullable=False)
+    metric: Mapped[str] = mapped_column(String(255), nullable=False)
+    value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    period_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    period_basis: Mapped[str] = mapped_column(String(16), nullable=False)
+    unit: Mapped[str] = mapped_column(String(128), nullable=False)
+    currency: Mapped[str | None] = mapped_column(String(3))
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    accession_no: Mapped[str | None] = mapped_column(String(32))
+    filing_date: Mapped[date | None] = mapped_column(Date)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    observation: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    raw_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (
+        Index("ix_observations_lookup", "ticker", "metric", "period_end", "provider"),
+    )
+
+
+async def ensure_company(session: AsyncSession, ticker: str) -> None:
+    """Concurrent fetchers can initialize the same company without a check/insert race."""
+    await session.execute(pg_insert(Company).values(ticker=ticker).on_conflict_do_nothing())

@@ -192,6 +192,8 @@ async def test_index_transcript_chunks_embeds_and_persists(mocker) -> None:
 async def db_factory(monkeypatch) -> AsyncIterator:
     from src.db import Base
 
+    if not os.getenv("TEST_DATABASE_URL"):
+        pytest.skip("Set TEST_DATABASE_URL to a disposable test database")
     engine = create_async_engine(TEST_DATABASE_URL)
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
@@ -249,6 +251,7 @@ async def _seed(session_factory) -> None:
         await session.commit()
 
 
+@pytest.mark.integration
 async def test_search_returns_top_k_for_known_query(db_factory, mocker) -> None:
     await _seed(db_factory)
 
@@ -264,6 +267,7 @@ async def test_search_returns_top_k_for_known_query(db_factory, mocker) -> None:
     assert results[0]["source_id"] == "0001-23-001"
 
 
+@pytest.mark.integration
 async def test_search_filters_by_ticker(db_factory, mocker) -> None:
     await _seed(db_factory)
     mocker.patch.object(
@@ -276,6 +280,7 @@ async def test_search_filters_by_ticker(db_factory, mocker) -> None:
     )
 
 
+@pytest.mark.integration
 async def test_search_filters_by_doc_type(db_factory, mocker) -> None:
     await _seed(db_factory)
     mocker.patch.object(

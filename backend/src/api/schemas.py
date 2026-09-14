@@ -1,8 +1,9 @@
 """Public API contract.
 
-Frontend types are codegenned from this module's OpenAPI projection
-(`npm run codegen` consumes /openapi.json). Do NOT change shapes after they
-ship without bumping /api/v1 → /api/v2.
+Frontend types are generated from the committed OpenAPI export. Regenerate
+frontend/types/openapi.json and frontend/types/api.ts when this contract changes.
+The report-state change is a coordinated development API update; external clients
+must regenerate before upgrading.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from src.agents.synthesizer import Memo
+from src.models.financial import FinancialObservation
 
 
 class AnalyzeRequest(BaseModel):
@@ -30,15 +32,16 @@ class AnalyzeResponse(BaseModel):
 
 class JobStatus(BaseModel):
     job_id: UUID
-    status: Literal["queued", "running", "complete", "error"]
+    status: Literal["queued", "running", "complete", "partial", "failed", "error"]
     progress_pct: int = Field(ge=0, le=100)
     current_step: str | None = None
     error: str | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ExportLinks(BaseModel):
-    pdf: str
-    excel: str
+    pdf: str | None = None
+    excel: str | None = None
 
 
 class MemoResponse(BaseModel):
@@ -48,6 +51,9 @@ class MemoResponse(BaseModel):
     exports: ExportLinks
     cost_usd: Decimal
     llm_calls: int
+    status: Literal["complete", "partial"]
+    financial_facts: list[FinancialObservation] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):

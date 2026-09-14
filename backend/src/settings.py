@@ -35,5 +35,16 @@ class Settings(BaseSettings):
 
     models_config_path: Path = Field(default=BACKEND_ROOT / "config" / "models.yaml")
 
+    def analysis_configuration_errors(self) -> list[str]:
+        errors = [
+            name.upper() for name in (
+                "fmp_api_key", "sec_api_key", "voyage_api_key",
+                "anthropic_api_key", "openai_api_key",
+            ) if not getattr(self, name).strip()
+        ]
+        if "@" not in self.edgar_user_agent or "example.com" in self.edgar_user_agent:
+            errors.append("EDGAR_USER_AGENT (supply a real contact email)")
+        return errors
+
 
 settings = Settings()

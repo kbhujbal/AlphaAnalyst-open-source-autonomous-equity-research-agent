@@ -19,11 +19,11 @@ export function Header() {
             <Link href="/">Home</Link>
           </Button>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/about">About</Link>
+            <Link href="/demo">Demo</Link>
           </Button>
           <Button variant="ghost" size="icon" asChild>
             <a
-              href="https://github.com/"
+              href="https://github.com/kbhujbal/AlphaAnalyst-open-source-autonomous-equity-research-agent"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="GitHub repository"

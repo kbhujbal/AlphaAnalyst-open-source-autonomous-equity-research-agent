@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 from sqlalchemy import delete, func, select
 
+from src.db import ensure_company
 from src.db import Company
 from src.db import Document as DocumentORM
 from src.db import SessionLocal
@@ -87,9 +88,7 @@ async def _replace_documents(
             f"chunks/embeddings length mismatch: {len(chunks)} vs {len(embeddings)}"
         )
     async with SessionLocal() as session:
-        if await session.get(Company, ticker) is None:
-            session.add(Company(ticker=ticker))
-            await session.flush()
+        await ensure_company(session, ticker)
 
         await session.execute(
             delete(DocumentORM).where(

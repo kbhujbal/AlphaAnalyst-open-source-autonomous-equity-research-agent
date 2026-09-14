@@ -20,6 +20,7 @@ then raise FmpRateLimitError.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -84,7 +85,7 @@ class FmpClient:
                 with attempt:
                     response = await self._client.get(url, params=merged)
                     response.raise_for_status()
-                    return response.json()
+                    return response.json(parse_float=Decimal)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
                 raise FmpRateLimitError(

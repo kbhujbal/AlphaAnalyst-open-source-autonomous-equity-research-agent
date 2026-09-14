@@ -196,7 +196,7 @@ def _build_facts(inp: SynthesizerInput) -> list[_Fact]:
             _add(
                 facts,
                 tags,
-                f"Implied market cap from {k}: ${v:,.0f}",
+                f"Implied market cap from {k}: {v:,.0f} {inp.comps_result.get('currency', 'unknown currency')}",
                 "fact",
                 f"comps:{target}",
             )
@@ -204,19 +204,26 @@ def _build_facts(inp: SynthesizerInput) -> list[_Fact]:
     if inp.fundamentals is not None:
         f = inp.fundamentals
         sid = f"fundamentals:{inp.ticker}:{f.period}"
-        for label, value in (
-            ("Revenue", f.revenue),
-            ("EPS (diluted)", f.eps),
-            ("Net income", f.net_income),
-            ("Total assets", f.total_assets),
-            ("Total liabilities", f.total_liabilities),
-            ("Operating cash flow", f.operating_cash_flow),
-            ("P/E (TTM)", f.pe_ttm),
-            ("Market cap", f.market_cap),
-        ):
-            if value is None:
-                continue
-            _add(facts, tags, f"{label} ({f.period}): {value}", "fact", sid)
+        if f.observations:
+            for metric, observation in f.observations.items():
+                if observation.currency is None and observation.unit not in {"ratio", "shares"}:
+                    _add(facts, tags, f"{metric} withheld: currency or monetary unit unavailable.", "fact", observation.source.url)
+                    continue
+                p = observation.period
+                interval = (
+                    f"{p.start or 'unknown start'} to {p.end or 'unknown end'}"
+                    if p.kind == "duration" else str(p.end or "unknown date")
+                )
+                source_id = observation.source.document_url or observation.source.url
+                _add(
+                    facts, tags,
+                    f"{metric}: {observation.value} {observation.unit}; currency={observation.currency or 'unknown'}; "
+                    f"{p.kind}/{p.basis} {interval}; source locator={observation.source.locator}; "
+                    f"observation={observation.observation_id}",
+                    "fact", source_id,
+                )
+        else:
+            _add(facts, tags, "Financial observation context unavailable; do not infer currencies or reporting intervals.", "fact", sid)
         _add(
             facts,
             tags,
@@ -299,6 +306,7 @@ def _derive_citations(memo: Memo, facts: list[_Fact]) -> list[Citation]:
             continue
         out.append(
             Citation(
+                tag=tag,
                 source_type=f.source_type,  # type: ignore[arg-type]
                 source_id=f.source_id,
                 snippet=f.text[:480],
@@ -314,6 +322,7 @@ def _derive_citations(memo: Memo, facts: list[_Fact]) -> list[Citation]:
                 "estimates",
             }
             else Citation(
+                tag=tag,
                 source_type="fact",
                 source_id=f.source_id,
                 snippet=f.text[:480],

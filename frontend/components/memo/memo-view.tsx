@@ -11,6 +11,7 @@ import {
 import type { MemoResponse } from "@/lib/api/client";
 import { MemoZ, buildTagMap } from "@/lib/api/memo-schema";
 
+import { FinancialFacts } from "./financial-facts";
 import { ExportButtons } from "./export-buttons";
 import { CatalystsSection } from "./sections/catalysts-section";
 import { FinancialsSection } from "./sections/financials-section";
@@ -23,7 +24,8 @@ interface MemoViewProps {
   response: MemoResponse;
 }
 
-function absoluteApiUrl(path: string): string {
+function absoluteApiUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
   return `${base.replace(/\/$/, "")}${path}`;
@@ -35,7 +37,7 @@ export function MemoView({ response }: MemoViewProps) {
     return (
       <ErrorState
         title="Memo schema mismatch"
-        description="The backend returned a memo in an unexpected shape. Run `npm run codegen` to regenerate types/api.ts and rebuild the frontend."
+        description="This report could not be displayed. Please contact the application maintainer."
       />
     );
   }
@@ -60,6 +62,16 @@ export function MemoView({ response }: MemoViewProps) {
           </Badge>
         </header>
 
+        <section className="mb-6 space-y-2 rounded-lg border p-4 text-sm" aria-label="Report quality">
+          <p className="font-semibold">{response.status === "partial" ? "Partial report: coverage gaps require review" : "Processing complete: analyst review required"}</p>
+          <p>Research prototype. Valuation is experimental. Citation tags do not establish that each claim is correct.</p>
+          {(response.warnings ?? []).length > 0 ? (
+            <ul className="list-disc space-y-1 pl-5">
+              {response.warnings!.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}
+            </ul>
+          ) : null}
+        </section>
+
         <Tabs defaultValue="summary">
           <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <TabsList className="inline-flex w-max">
@@ -76,6 +88,7 @@ export function MemoView({ response }: MemoViewProps) {
             <SummarySection memo={memo} tagMap={tagMap} />
           </TabsContent>
           <TabsContent value="financials" className="pt-6">
+            <FinancialFacts facts={response.financial_facts ?? []} />
             <FinancialsSection memo={memo} tagMap={tagMap} />
           </TabsContent>
           <TabsContent value="catalysts" className="pt-6">

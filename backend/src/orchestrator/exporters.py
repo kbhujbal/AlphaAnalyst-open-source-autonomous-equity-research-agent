@@ -4,12 +4,13 @@ PDF: built with reportlab (pure Python; no system libraries beyond stdlib).
      We deliberately picked reportlab over weasyprint to avoid the cairo +
      pango runtime requirement weasyprint imposes on Linux/Mac builds.
 
-Excel: built with openpyxl. Computed values are written, but live formulas
-     drive every total cell so analysts can edit assumptions and re-run.
+Excel: a snapshot with a few total formulas; assumptions do not recalculate
+     the model. Full editable valuation models remain future work.
 """
 from __future__ import annotations
 
 import logging
+from html import escape
 from decimal import Decimal
 from pathlib import Path
 
@@ -32,7 +33,7 @@ _SECTION_TITLES: list[tuple[str, str]] = [
 ]
 
 
-def export_pdf(memo: Memo, path: Path) -> None:
+def export_pdf(memo: Memo, path: Path, *, warnings: list[str] | None = None) -> None:
     from reportlab.lib.pagesizes import LETTER
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import (
@@ -52,11 +53,22 @@ def export_pdf(memo: Memo, path: Path) -> None:
         Paragraph(f"As of {memo.as_of.isoformat()}", styles["Italic"]),
         Spacer(1, 12),
     ]
+    story.append(Paragraph(
+        "Partial report" if warnings else "Complete processing; analyst review required",
+        styles["Heading2"],
+    ))
+    story.append(Paragraph(
+        "Research prototype. Valuation is experimental. Citations have not been "
+        "verified at the claim level. Independently review sources and calculations.",
+        styles["BodyText"],
+    ))
+    for warning in warnings or []:
+        story.append(Paragraph(escape(warning), styles["BodyText"]))
     for title, attr in _SECTION_TITLES:
         body = getattr(memo, attr) or "(empty)"
         story.append(Paragraph(title, styles["Heading2"]))
         # Reportlab renders <br/> as a hard break; preserve simple line breaks.
-        body_html = body.replace("\n", "<br/>")
+        body_html = escape(body).replace("\n", "<br/>")
         story.append(Paragraph(body_html, styles["BodyText"]))
         story.append(Spacer(1, 8))
 
@@ -66,7 +78,7 @@ def export_pdf(memo: Memo, path: Path) -> None:
         for i, c in enumerate(memo.citations, start=1):
             story.append(
                 Paragraph(
-                    f"{i}. [{c.source_type}] {c.source_id} — {c.snippet}",
+                    escape(f"{c.tag or 'Unmapped'}. [{c.source_type}] {c.source_id} — {c.snippet}"),
                     styles["BodyText"],
                 )
             )
@@ -92,6 +104,10 @@ def export_excel(
     path.parent.mkdir(parents=True, exist_ok=True)
 
     wb = Workbook()
+    notice = wb.create_sheet("Read me")
+    notice["A1"] = "Experimental valuation snapshot; analyst review required."
+    notice["A2"] = "Editing inputs does not recalculate projections or sensitivity values."
+    notice["A3"] = "Current valuation assumptions require independent review."
 
     # ---- Inputs sheet ----
     ws_in = wb.active

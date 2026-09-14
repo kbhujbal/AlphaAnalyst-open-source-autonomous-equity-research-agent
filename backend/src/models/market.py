@@ -4,9 +4,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .filing import Source
+from .financial import FinancialObservation
 
 
 class PriceBar(BaseModel):
@@ -18,6 +19,7 @@ class PriceBar(BaseModel):
     close: Decimal
     volume: int
     adjusted_close: Decimal | None = None
+    currency: str | None = None
     source: Source
 
 
@@ -38,6 +40,10 @@ class Divergence(BaseModel):
 class FundamentalSnapshot(BaseModel):
     ticker: str
     period: str
+    currency: str | None = None
+    observations: dict[str, FinancialObservation] = Field(default_factory=dict)
+    reported_observations: list[FinancialObservation] = Field(default_factory=list, exclude=True)
+    warnings: list[str] = Field(default_factory=list)
     revenue: Decimal | None = None
     eps: Decimal | None = None
     net_income: Decimal | None = None
@@ -46,6 +52,6 @@ class FundamentalSnapshot(BaseModel):
     operating_cash_flow: Decimal | None = None
     pe_ttm: Decimal | None = None
     market_cap: Decimal | None = None
-    confidence: Literal["high", "low"]
+    confidence: Literal["high", "low"] = Field(description="Revenue and diluted EPS cross-check agreement; other metric limitations are disclosed in warnings")
     divergences: list[Divergence] = []
     source: Source

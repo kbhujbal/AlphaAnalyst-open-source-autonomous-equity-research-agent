@@ -1,280 +1,225 @@
 # AlphaAnalyst
 
-AlphaAnalyst is an open-source autonomous equity research agent. Give it a US
-stock ticker and it produces a research memo: executive summary, financial
-snapshot, recent catalysts, DCF + comparables valuation, earnings-call tone
-shift, bull/bear cases, and risks — every numerical claim cited back to its
-primary source.
+AlphaAnalyst is an experimental US equity research assistant. It collects filings,
+market data, news, and earnings transcripts and drafts a research memo with source
+references and experimental valuation outputs. Analyst review is required.
 
-The pipeline runs ten data fetchers concurrently (SEC EDGAR, Polygon, FMP,
-Finnhub, MarketAux, Google News, FRED, Voyage embeddings, sec-api XBRL,
-FMP transcripts), indexes the long-form documents into pgvector, then runs
-six LLM agents — five "constructive" agents plus a Devil's Advocate forced
-to use a different model family for genuine independence. A pure-Python DCF
-in `decimal.Decimal` and a peer-comparable multiples engine produce the
-valuation. A synthesizer with a hard schema and a citation validator writes
-the final memo.
+The implementation does **not** establish claim-level factual accuracy, investment
+outperformance, or production readiness. The current DCF uses simplified inputs;
+Excel exports are snapshots with a few total formulas, not recalculating models.
+A different model providing skeptical review does not guarantee independent research.
 
-Two design choices anchor the project: **the LLM is a writer, not a knower**
-(numbers come from APIs; the synthesizer downgrades any section whose
-numerical claims aren't tagged to a real source) and **valuation is pure
-Python** (`decimal.Decimal` everywhere; no LLM ever touches an arithmetic
-operator). The result is a memo you can hand to an analyst and have them
-audit every number to a 10-K page.
+## Reproducible setup
 
-## Architecture
+Use Python 3.13 (see `.python-version`), uv 0.12.21, and Node.js 22 (see
+`frontend/.nvmrc`; Node 24 is also supported). Docker is needed for live analysis
+and database integration tests. Dependency installation initially requires network
+access. Commit both `backend/uv.lock` and `frontend/package-lock.json` when updating
+dependencies. Run commands from the repository root unless a `cd` is shown.
 
-```
-                     ┌──────────────┐
-  ticker (e.g. TSLA) │   Frontend   │  Next.js 14 + TanStack Query
-  ──────────────────►│  (App Router)│  Types codegen'd from /openapi.json
-                     └──────┬───────┘
-                            │ POST /api/v1/analyze
-                            ▼
-                     ┌──────────────┐
-                     │   FastAPI    │  Lifespan, CORS, exception handlers
-                     │ Orchestrator │  Per-step Redis progress writes
-                     └──────┬───────┘
-                            │ asyncio.gather
-       ┌────────────────────┼─────────────────────────┐
-       ▼                    ▼                         ▼
-  ┌─────────┐         ┌──────────────┐          ┌──────────┐
-  │Fetchers │         │   Indexer    │          │  Agents  │
-  │  (10)   │         │ (Voyage AI,  │          │   (6+1)  │
-  │         │         │   pgvector)  │          │          │
-  └────┬────┘         └──────┬───────┘          └────┬─────┘
-       │                     │                       │
-       ▼                     ▼                       ▼
- SEC EDGAR / sec-api   Postgres + pgvector    Anthropic + OpenAI
- Polygon / FMP                                via LiteLLM
- Finnhub / MarketAux
- FRED / Google News
-                            │
-                            ▼
-                     ┌──────────────┐
-                     │   Modeler    │  decimal.Decimal everywhere
-                     │ (DCF + Comps)│  5×5 sensitivity grid
-                     └──────┬───────┘
-                            │
-                            ▼
-                     ┌──────────────────┐
-                     │   Synthesizer    │  task=synthesis (Claude Opus)
-                     │     + Citation   │
-                     │      Validator   │ ◄─── Devil's Advocate
-                     └──────┬───────────┘      task=devils_advocate
-                            │                  (gpt-4o, intentionally
-                            │                   different family)
-              ┌─────────────┴───────────────┐
-              ▼                             ▼
-          PDF (reportlab)               Excel (openpyxl)
-                                        live formulas + sensitivity
-```
+### Offline interface demonstration
 
-## Repository layout
-
-```
-alpha-analyst/
-├── backend/                 Python service (FastAPI + agents + pipeline)
-│   ├── src/
-│   │   ├── clients/         External-API wrappers (httpx + tenacity)
-│   │   ├── llm/             LiteLLM wrapper + cost tracking
-│   │   ├── models/          Pydantic data models
-│   │   ├── fetchers/        clients + cache + DB persistence
-│   │   ├── agents/          LLM-driven analysis units + synthesizer
-│   │   ├── modeler/         DCF + comps (pure Python)
-│   │   ├── orchestrator/    pipeline + PDF/Excel exporters
-│   │   └── api/             FastAPI app, routes, schemas
-│   ├── alembic/             schema migrations
-│   ├── config/models.yaml   per-task model + fallback config
-│   └── tests/               pytest + respx + eval harness
-├── frontend/                Next.js 14 app (App Router, TanStack Query)
-├── scripts/run_evals.py     eval CLI (hits real APIs)
-└── docker-compose.yml       postgres (pgvector) + redis
-```
-
-## Setup
-
-### Prerequisites
-
-- macOS / Linux
-- Python 3.11+ via [uv](https://docs.astral.sh/uv/) (`brew install uv`)
-- Docker Desktop or [OrbStack](https://orbstack.dev) (`brew install orbstack`)
-- Node.js 20+ and npm
-- API keys (see `backend/.env.example`)
-
-### Backend
-
-```bash
-cd backend
-cp .env.example .env                       # fill in API keys
-uv sync                                    # creates .venv with all deps
-docker compose -f ../docker-compose.yml up -d   # postgres + redis
-uv run alembic upgrade head                # apply both migrations
-uv run pytest                              # ~80 tests should pass
-uv run uvicorn src.api.main:app --reload --port 8000
-```
-
-The API ships its OpenAPI schema at <http://localhost:8000/openapi.json>.
-Interactive docs at <http://localhost:8000/docs>.
-
-### Frontend
+No provider accounts, backend, database, or Redis are needed:
 
 ```bash
 cd frontend
-cp .env.local.example .env.local           # NEXT_PUBLIC_API_URL=...
-npm install
-npm run codegen                            # regenerates types/api.ts
-npm run dev                                # http://localhost:3000
+npm ci
+npm run dev
 ```
 
-`npm run codegen` re-fetches `/openapi.json` and rewrites `types/api.ts`. Run
-it whenever the backend's API contract changes.
+Open http://localhost:3000/demo. The homepage links to this fictional, fixed
+fixture. It demonstrates report layout, source references, coverage warnings, and
+unavailable exports. It does not demonstrate live research quality. After the
+initial install, frontend builds and this demo do not fetch fonts or company data.
 
-### Running an analysis
-
-From the home page, type a ticker (e.g. `TSLA`) and press Enter. The page
-routes to `/analysis/{job_id}` which polls `/api/v1/jobs/{job_id}` every 2s,
-shows step-by-step progress, and renders the memo when the pipeline finishes.
-Download buttons in the right rail stream the PDF / live-formula Excel from
-the backend.
-
-<!--
-## Running the eval suite
-
-The eval suite is the project's truth check. It hits **real** APIs (SEC
-EDGAR, Polygon, FMP, Finnhub, Voyage, FRED, sec-api, Anthropic, OpenAI), so
-budget for it accordingly:
-
-- ~$1.50 average cost per analysis × 10 tickers = **~$15 per full eval run**
-- Latency: ~1–3 minutes per ticker; ~15–30 minutes total
-- Eval credits should come from a separate API budget, not your dev account
+### Backend and live analysis
 
 ```bash
 cd backend
-uv run python ../scripts/run_evals.py                # full run, stdout
-uv run python ../scripts/run_evals.py --output ../eval-report.md
-uv run python ../scripts/run_evals.py --only TSLA AAPL  # restricted run
+uv sync --frozen
+cp .env.example .env
 ```
 
-The CLI exits non-zero if any of these thresholds breaches:
+Edit `backend/.env` before submitting live analyses. The default model configuration
+requires `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. Also configure `FMP_API_KEY`,
+`SEC_API_KEY`, `VOYAGE_API_KEY`, and `EDGAR_USER_AGENT` with a real contact email.
+Missing essential configuration returns HTTP 503 before creating a job.
 
-- Numerical accuracy < **99%**
-  (revenue figures from each ticker's 10-K must appear in the memo within
-  a 5% tolerance)
-- Hallucinated `[F#]` citation tags > **0**
-  (every tag in the memo body must map to an entry in `memo.citations`)
-- Average cost > **$1.50** per analysis
+Configure Polygon, Finnhub, MarketAux, and FRED keys for the corresponding coverage.
+Provider account plans must permit the endpoints used. Missing optional coverage,
+provider failures, low-confidence cross-checks, and unavailable sections produce
+partial reports with warnings. Requests incur provider charges. Model availability
+and provider entitlements need a live smoke test with your accounts.
 
-Ground-truth facts live in `backend/tests/eval/dataset.py` and cite the
-exact 10-K Item where each number appears. If a number drifts because the
-underlying filing was revised, fix the dataset, not the pipeline.
--->
-
-<!--
-## Sample memo (illustrative)
-
-The full output is a JSON object validated against the Memo schema in
-[backend/src/agents/synthesizer.py](backend/src/agents/synthesizer.py).
-Below is a representative slice for TSLA — every numerical claim is tagged.
-
-```
-Ticker: TSLA
-As of: 2025-01-30
-
-Executive summary
-Tesla reported FY2024 revenue of $97.69B [F1], up 1% YoY against a tougher
-auto market. Operating margin compressed to 7.2% [F2] vs 9.2% in FY2023,
-driven by ASP cuts in China and ramp costs at Cybertruck. The Energy
-Storage segment grew 67% YoY and contributed 9% of total revenue [F3].
-
-Financial snapshot
-Revenue $97.69B [F1] · GAAP net income $7.13B [F4] · Free cash flow
-$3.58B [F5] · Total liquidity $36.6B [F6].
-
-Recent catalysts
-News signal for TSLA (last 90d, recency-weighted): net_sentiment=+0.124
-across 47 classified articles (28 positive, 9 negative, 6 high-materiality).
-Most-material event: regulatory clearance for FSD v13 in select markets [F7].
-
-Valuation
-DCF base case intrinsic value per share: $245.50 [F8]. WACC 9.0%, terminal
-growth 2.5%, 5-year projection. Sensitivity grid (WACC × g) shows IV/share
-in [$181, $312] across ±2% WACC and ±1% terminal-growth combinations.
-
-Citations
-[F1] (filings_agent) Revenue grew 1% YoY in FY2024.
-     filing — 10-K 0002193125-25-013328 p.42
-[F2] (filings_agent) Operating margin compressed to 7.2%.
-     filing — 10-K 0002193125-25-013328 p.42
-[F3] (filings_agent) Energy Storage revenue grew 67% YoY.
-     filing — 10-K 0002193125-25-013328 p.78
-... (typical run produces 30-60 citations)
-```
-
-The actual JSON shape is defined by the `Memo` Pydantic model and is what
-the frontend consumes; the prose above is what the synthesizer renders into
-the PDF / web view.
--->
-
-<!--
-## Known limitations
-
-This is a v0.1.0 — the pipeline runs end-to-end and produces a memo, but
-several rough edges remain:
-
-- **Single-period DCF**: the orchestrator currently builds the DCF from a
-  one-period revenue history (no multi-year XBRL roll-up). CAGR resolves
-  to 0; the resulting valuation is a no-growth perpetuity unless the user
-  edits the Excel export. Tracked for v0.2.0.
-- **Free-text Memo sections**: the Memo schema returns prose; structured
-  series like quarterly revenue, segment breakouts, and tone keyword counts
-  per quarter are *computed* in the agents but not surfaced as JSON. The
-  frontend renders empty-state placeholders for those charts until they
-  ship in MemoResponse.
-- **Equity-only**: no fixed-income, no derivatives, no preferred shares
-  treatment. US tickers only.
-- **No MNPI compliance layer**: the system has no provenance check on
-  insider information; do not feed it documents under embargo.
-- **No backtesting**: memo recommendations are not back-tested against
-  realized returns. Treat the system as a research-acceleration tool, not a
-  signal generator.
-- **No multi-currency**: every number is assumed USD; non-USD filers (e.g.
-  ADRs of European companies) will produce confused output.
-- **No real-time streaming**: news sentiment is computed at memo-generation
-  time; no continuous re-evaluation.
--->
-
-## Production roadmap
-
-- **v0.2** Structured Memo: extend `MemoResponse` with `financials.price_history`,
-  `financials.annual_series`, `catalysts.events[]`, `valuation.sensitivity_table`,
-  `valuation.method_comparison`. Wire into the existing chart components.
-- **v0.3** Multi-period DCF: orchestrator pulls 5+ years of XBRL facts,
-  computes proper revenue CAGR, exposes per-segment series.
-- **v0.4** Backtesting harness: memo → forward-12-month return; track hit
-  rate against benchmark.
-- **v0.5** Real-time streaming: incremental memo updates on new 8-Ks, news,
-  or price moves > 2σ.
-- **v0.6** Multi-currency + non-US filers (TSE, LSE, HKEX).
-- **v0.7** MNPI compliance: source-provenance gate, audit log, per-user
-  permissions.
-- **v1.0** Production observability: per-run tracing, cost dashboards, SLOs.
-
-## Tagging the v0.1.0 release
-
-Once `python scripts/run_evals.py` passes locally:
+Start PostgreSQL and Redis, apply migrations, then start the backend:
 
 ```bash
-git tag -a v0.1.0 -m "v0.1.0 — eval thresholds met"
-git push --tags
+# From backend/
+docker compose -f ../docker-compose.yml up -d --wait
+uv run --frozen alembic upgrade head
+uv run --frozen uvicorn src.api.main:app --reload --port 8000
 ```
 
----
+In another terminal:
 
-**A note on the eval suite philosophy.** Every claim in this README — the
-memo's structure, the Devil's Advocate model split, the strict
-synthesizer validator — exists because we expect a human analyst to audit
-the output. The eval suite tests exactly that: numerical claims trace back
-to 10-K pages, citations are non-fabricated, the cost-per-analysis is
-sustainable. If those three properties degrade, the whole pitch falls
-apart, so the eval CLI is wired to fail loudly.
+```bash
+cd frontend
+cp .env.local.example .env.local
+npm ci
+npm run dev
+```
+
+Open http://localhost:3000. API documentation is at http://localhost:8000/docs.
+Compose credentials and exposed service ports are for local development.
+
+## Report states
+
+| State | Meaning |
+| --- | --- |
+| `queued` / `running` | Processing has not finished. Progress indicates pipeline stages, not evidence quality or remaining time. |
+| `complete` | No known processing or coverage gaps were detected by the current checks. This is not independent factual verification. |
+| `partial` | A readable, cited memo exists, but warnings identify missing coverage, agent errors, insufficient sections, validation downgrades, or export failures. |
+| `failed` | Essential inputs were absent, no usable cited memo was produced, synthesis failed, the budget cap was exceeded, or execution failed. No memo is published. |
+
+Both complete and partial memos can be read and downloaded where exports exist.
+The API exposes `warnings` on job and memo responses. Unavailable export URLs are
+`null`; downloads require a finished job, an availability flag, and an existing file.
+The frontend stops polling all terminal states. Legacy `error` jobs remain readable
+as failures during the 24-hour cache transition.
+
+Current full-report checks require a 10-K and a fundamentals snapshot with revenue.
+They also check for unavailable 10-Qs, prices, news, macro data, transcripts,
+estimates, peers, agent findings, valuations, and memo sections. Zero recent 8-Ks
+is a valid result. Some capabilities, including short-interest analysis, remain
+unimplemented, so live reports will commonly be partial. Warnings are conservative;
+there is not yet a configurable coverage policy for different research workflows.
+
+Citation objects now carry their explicit `tag` when emitted by the synthesizer.
+The interface does not guess missing tag mappings. Actual filing-page extraction,
+quote verification, and claim-by-claim source support remain future work.
+
+## Validation without provider credentials
+
+```bash
+cd backend
+uv sync --frozen
+uv run --frozen pytest -m 'not integration' -q
+```
+
+From the repository root, regenerate API types without starting services:
+
+```bash
+uv run --frozen --project backend python scripts/export_openapi.py
+cd frontend
+npm ci
+npm run codegen
+npm run test
+npm run typecheck
+npm run lint
+npm run build
+```
+
+OpenAPI JSON and generated TypeScript are committed. Export and regenerate both
+when the backend contract changes. CI rejects stale generated contracts and runs
+the tests, type checking, linting, and production build. Tests and schema export use
+LiteLLM's bundled pricing map rather than fetching pricing metadata at import time.
+Costs remain estimates; provider billing is authoritative.
+
+### Database integration checks
+
+These tests create/drop tables. Use a dedicated, disposable test database. They
+skip unless `TEST_DATABASE_URL` is explicitly set; never point it at your working
+research database.
+
+```bash
+# From repository root, with Docker running:
+docker compose up -d --wait
+docker compose exec -T postgres createdb -U analyst analyst_test
+cd backend
+TEST_DATABASE_URL=postgresql+asyncpg://analyst:analyst@localhost:5432/analyst_test uv run --frozen pytest -m integration -q
+```
+
+The database CI job checks migrations and PostgreSQL/pgvector integration against
+an isolated database. Unit and fixture tests do not validate provider availability
+or the financial accuracy of a live memo. The existing evaluation scripts check
+limited revenue matching and citation structure; they are not institutional-quality
+financial validation.
+
+## Architecture and remaining work
+
+- `backend/src/clients` and `fetchers`: provider access, caching, persistence.
+- `backend/src/agents`: specialist findings and memo synthesis through LiteLLM.
+- `backend/src/modeler`: deterministic, experimental valuation calculations.
+- `backend/src/orchestrator`: pipeline, report outcomes, PDF/Excel snapshots.
+- `backend/src/api`: FastAPI contracts and job/report endpoints.
+- `frontend`: Next.js, TanStack Query, Zod, and source-reference views.
+
+Reports currently expire from Redis after 24 hours and exports use local temporary
+storage. Jobs use in-process background tasks. Authentication, durable workers,
+tenant isolation, canonical point-in-time financial data, corrected valuation,
+recalculating Excel models, and claim-level verification remain pending.
+Charts that need structured series explicitly show unavailable states; this stage
+does not add chart data to the API. The financial-observation foundation is described below. Exact claim verification,
+a defensible valuation model, and an analyst pilot remain subsequent milestones.
+
+The report-status and nullable-export contract changes require consumers to update
+from the previous development checkout. Deploy the backend and frontend together;
+regenerate external clients from the committed OpenAPI schema.
+
+
+## Financial observation foundation
+
+Run `uv run --frozen alembic upgrade head` from `backend/` before using this update.
+Migration `0003_financial_observations` adds an immutable observation store. Existing
+`facts` rows are preserved but are not used for financial cross-checking: their
+missing reporting context cannot safely be reconstructed. Run a new analysis to
+populate canonical observations. Versioned cache keys bypass the old snapshots.
+
+Each accepted observation stores its metric, original provider tag, finite Decimal
+value, canonical unit, declared currency, start/end dates, instant/duration type,
+period basis, dimensions, source record locator, filing accession/date, retrieval
+time, and a canonical JSON payload hash. Parsed source records are retained in the
+database. Numeric decimal JSON values are decoded without a binary-float conversion.
+Repeated identical observations deduplicate; changed payloads and different filings
+retain separate identities. Hashes identify parsed provider records, not original
+HTTP bytes or whole filing documents. Missing dates and currencies remain null.
+
+The SEC parser preserves annual, quarterly, YTD, instant, and segment contexts.
+Unit aliases normalize to forms such as `USD`, `EUR/share`, `shares`, and `ratio`.
+`decimals` records rounding precision; it does not multiply amounts. This follows
+[sec-api's documented unscaled response and period/segment format](https://sec-api.io/api-reference/xbrl-to-json).
+
+FMP statement ingestion requests six annual records and keeps each accepted record
+with its own provenance. When consecutive fiscal year ends establish a full annual
+interval, the next start is derived from the preceding end plus one day. That
+normalization is labeled and records the prior row's locator and hash. It handles
+non-calendar and 52/53-week years; it does not invent January starts or missing
+currencies. EPS uses a diluted EPS field and currency-per-share units, without a
+fallback to basic EPS. Missing or incompatible balance-sheet/cash-flow contexts
+are withheld from the assembled snapshot. TTM ratios and undated market values do
+not inherit annual financial-statement dates.
+
+The pipeline extracts both the fetched 10-K and 10-Q before refreshing fundamentals.
+Revenue/EPS cross-checks require complete matching intervals, currency, unit,
+consolidated dimensions, and a compatible filing version. Conflicting candidates
+are not arbitrarily selected. `confidence` describes the revenue/EPS cross-check;
+it does not certify every observation. Per-field source references remain attached
+when SEC values replace vendor values. Latest-filing pointers now revalidate on a
+five-minute cache interval; old-report amendments do not outrank newer report years.
+
+`MemoResponse.financial_facts` exposes the selected observations and provenance,
+without raw provider payloads. The Financials tab shows these records. Reports
+retain warnings about missing context. Monetary observations without known currency
+are withheld from the synthesis fact bundle. Valuation is withheld when necessary
+quote currency or market-cap date/currency is unverified. Comparable valuations
+exclude peers in other currencies; there is no automatic FX conversion.
+
+Still pending: applying/testing migrations on a live PostgreSQL instance; provider
+account smoke tests; a larger independently reviewed company corpus; full XBRL
+context/taxonomy coverage; a security master; historical/as-of query APIs; raw HTTP
+archives; automatic restatement/reconciliation workflows; verified quote metadata;
+and a financially reviewed valuation methodology. The existing price, macro, and
+estimates pipelines have not been converted into this financial-statement model.
+The stored filing dates and timezone-aware acceptance timestamps do not by
+themselves make the application a point-in-time backtesting system. Naive provider
+acceptance timestamps remain in source payloads and are not assigned a timezone.

@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "codegen": "openapi-typescript http://localhost:8000/openapi.json -o types/api.ts"
+    "codegen": "openapi-typescript types/openapi.json -o types/api.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
@@ -46,5 +48,8 @@
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=22 <25"
   }
 }

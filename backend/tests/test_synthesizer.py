@@ -20,6 +20,7 @@ from src.models.filing import Source
 from src.models.finding import Citation, Finding
 from src.models.macro import MacroSnapshot
 from src.models.market import FundamentalSnapshot
+from src.fetchers.financial_normalization import normalize_fmp
 
 
 class StubLLM:
@@ -89,6 +90,10 @@ def _stub_input() -> SynthesizerInput:
         fundamentals=FundamentalSnapshot(
             ticker="TSLA",
             period="2023-12-31",
+            observations={"revenue": normalize_fmp(
+                "TSLA", [{"symbol": "TSLA", "date": "2023-12-31", "period": "FY", "reportedCurrency": "USD", "revenue": 96773000000}],
+                "income-statement", datetime.now(timezone.utc),
+            )[0]},
             revenue=Decimal("96773000000"),
             eps=Decimal("4.30"),
             net_income=Decimal("14997000000"),
@@ -152,7 +157,8 @@ def test_build_facts_includes_findings_fundamentals_and_macro() -> None:
     text_blob = " | ".join(f.text for f in facts)
     assert "Revenue grew 25%" in text_blob
     assert "Operating margin expanded" in text_blob
-    assert "Revenue (2023-12-31)" in text_blob
+    assert "revenue: 96773000000 USD" in text_blob
+    assert "unknown start to 2023-12-31" in text_blob
     assert "10Y treasury" in text_blob
 
 
@@ -295,3 +301,14 @@ async def test_synthesizer_pins_ticker_when_llm_diverges() -> None:
     synth = Synthesizer(llm=llm)
     memo = await synth.run(inp)
     assert memo.ticker == "TSLA"
+
+
+def test_citation_tags_survive_sparse_fact_selection():
+    from src.agents.synthesizer import Memo, _Fact, _derive_citations
+    memo = Memo.model_validate_json(_memo_payload(executive_summary="Supported [F9].", financial_snapshot="Insufficient evidence"))
+    for field in ("recent_catalysts", "valuation", "earnings_call_tone_shift", "alt_data_signals", "bull_case", "bear_case", "risks"):
+        setattr(memo, field, "Insufficient evidence")
+    citations = _derive_citations(memo, [_Fact(tag="F9", text="Supported", source_type="filing", source_id="filing-9")])
+    assert len(citations) == 1
+    assert citations[0].tag == "F9"
+    assert citations[0].source_id == "filing-9"

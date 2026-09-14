@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
+
+# Use the versioned, bundled pricing map unless explicitly configured otherwise.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 import litellm
 import yaml
 from pydantic import BaseModel
+from src.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,14 @@ class CompletionResult(BaseModel):
 def _is_anthropic_model(model: str) -> bool:
     m = model.lower()
     return m.startswith("claude") or m.startswith("anthropic/") or "/claude" in m
+
+
+def _api_key(model: str) -> str | None:
+    if _is_anthropic_model(model):
+        return settings.anthropic_api_key or None
+    if model.startswith(("openai/", "gpt-")):
+        return settings.openai_api_key or None
+    return None
 
 
 class AnalystLLM:
@@ -77,12 +90,18 @@ class AnalystLLM:
             "messages": messages,
             "num_retries": 2,
         }
+        if key := _api_key(model):
+            kwargs["api_key"] = key
         if "max_tokens" in cfg:
             kwargs["max_tokens"] = cfg["max_tokens"]
         if "temperature" in cfg:
             kwargs["temperature"] = cfg["temperature"]
         if fallback:
-            kwargs["fallbacks"] = [fallback]
+            fallback_key = _api_key(fallback)
+            kwargs["fallbacks"] = (
+                [{"model": fallback, "api_key": fallback_key}]
+                if fallback_key else [fallback]
+            )
         if response_schema is not None:
             kwargs["response_format"] = response_schema
 

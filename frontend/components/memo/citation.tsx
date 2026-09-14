@@ -19,7 +19,7 @@ interface CitationProps {
 export function Citation({ id, citation }: CitationProps) {
   const label = citation
     ? `[${citation.source_type}] ${citation.source_id}`
-    : id;
+    : `${id}: source mapping unavailable`;
   const trigger = (
     <a
       href={`#cite-${id}`}

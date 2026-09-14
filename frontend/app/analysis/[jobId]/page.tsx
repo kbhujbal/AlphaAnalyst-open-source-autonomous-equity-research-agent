@@ -7,6 +7,7 @@ import { Container } from "@/components/layout/container";
 import { MemoView } from "@/components/memo/memo-view";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { isJobPending, isReportReady } from "@/lib/api/job-state";
 import { useJobStatus, useMemo as useMemoQuery } from "@/lib/api/hooks";
 
 export default function AnalysisPage() {
@@ -16,7 +17,7 @@ export default function AnalysisPage() {
   const job = useJobStatus(jobId);
   const memoQuery = useMemoQuery(
     jobId,
-    job.data?.status === "complete",
+    isReportReady(job.data?.status),
   );
 
   if (job.isLoading) {
@@ -50,7 +51,7 @@ export default function AnalysisPage() {
     );
   }
 
-  if (job.data.status === "error") {
+  if (job.data.status === "failed" || job.data.status === "error") {
     return (
       <Container className="py-12">
         <ErrorState
@@ -63,7 +64,7 @@ export default function AnalysisPage() {
     );
   }
 
-  if (job.data.status === "queued" || job.data.status === "running") {
+  if (isJobPending(job.data.status)) {
     return (
       <Container className="py-12">
         <ProgressView
@@ -74,7 +75,7 @@ export default function AnalysisPage() {
     );
   }
 
-  // status === "complete"
+  // Both complete and partial reports have readable memos.
   if (memoQuery.isLoading) {
     return (
       <Container className="py-12">

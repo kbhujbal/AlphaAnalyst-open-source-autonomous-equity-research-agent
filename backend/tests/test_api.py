@@ -38,6 +38,7 @@ def stubbed_redis(mocker) -> dict[str, Any]:
 @pytest.fixture
 def stub_pipeline(mocker) -> AsyncMock:
     """Block actual pipeline.analyze; the BackgroundTask still runs it."""
+    mocker.patch.object(type(routes_module.settings), "analysis_configuration_errors", return_value=[])
     return mocker.patch.object(
         routes_module.pipeline, "analyze", AsyncMock(return_value=None)
     )
@@ -156,8 +157,8 @@ async def test_get_memo_returns_memo_when_complete(client, stubbed_redis) -> Non
     body = r.json()
     assert body["ticker"] == "TSLA"
     assert body["sections"]["executive_summary"] == "Solid quarter."
-    assert body["exports"]["pdf"] == f"/api/v1/memos/{job_id}/pdf"
-    assert body["exports"]["excel"] == f"/api/v1/memos/{job_id}/excel"
+    assert body["exports"]["pdf"] is None
+    assert body["exports"]["excel"] is None
     assert Decimal(body["cost_usd"]) == Decimal("0.55")
     assert body["llm_calls"] == 7
 
@@ -165,17 +166,18 @@ async def test_get_memo_returns_memo_when_complete(client, stubbed_redis) -> Non
 # ---- exports --------------------------------------------------------------
 
 
-async def test_get_pdf_404_when_missing(client) -> None:
+async def test_get_pdf_404_when_missing(client, stubbed_redis) -> None:
     r = await client.get(f"/api/v1/memos/{uuid4()}/pdf")
     assert r.status_code == 404
 
 
-async def test_get_pdf_streams_file_when_present(client, tmp_path, mocker) -> None:
+async def test_get_pdf_streams_file_when_present(client, tmp_path, mocker, stubbed_redis) -> None:
     job_id = uuid4()
     job_dir = tmp_path / str(job_id)
     job_dir.mkdir()
     pdf = job_dir / "memo.pdf"
     pdf.write_bytes(b"%PDF-1.4 dummy")
+    stubbed_redis[f"analysis:job:{job_id}"] = {"status": "partial", "pdf_available": True}
 
     def _fake_dir(jid: str):
         return tmp_path / jid
@@ -188,7 +190,7 @@ async def test_get_pdf_streams_file_when_present(client, tmp_path, mocker) -> No
     assert b"%PDF" in r.content
 
 
-async def test_get_excel_404_when_missing(client) -> None:
+async def test_get_excel_404_when_missing(client, stubbed_redis) -> None:
     r = await client.get(f"/api/v1/memos/{uuid4()}/excel")
     assert r.status_code == 404
 
@@ -254,3 +256,88 @@ async def test_openapi_schema_is_valid_json(client) -> None:
         "/api/v1/health",
     ):
         assert path in paths, f"missing path {path}"
+
+
+async def test_configuration_failure_does_not_enqueue(client, stubbed_redis, mocker):
+    mocker.patch.object(type(routes_module.settings), "analysis_configuration_errors", return_value=["FMP_API_KEY"])
+    analyze = mocker.patch.object(routes_module.pipeline, "analyze", AsyncMock())
+    response = await client.post("/api/v1/analyze", json={"ticker": "AAPL"})
+    assert response.status_code == 503
+    assert "FMP_API_KEY" in response.json()["detail"]
+    assert stubbed_redis == {}
+    analyze.assert_not_awaited()
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("provider unavailable"), routes_module.pipeline.CostCapExceededError("budget exceeded")])
+async def test_background_failure_is_terminal_and_has_no_memo(client, stubbed_redis, stub_pipeline, failure):
+    stub_pipeline.side_effect = failure
+    response = await client.post("/api/v1/analyze", json={"ticker": "AAPL"})
+    job_id = response.json()["job_id"]
+    job = (await client.get(f"/api/v1/jobs/{job_id}")).json()
+    assert job["status"] == "failed"
+    assert job["error"]
+    assert (await client.get(f"/api/v1/memos/{job_id}")).status_code == 404
+    assert "memo" not in stubbed_redis[f"analysis:job:{job_id}"]
+
+
+async def test_partial_memo_preserves_warnings_and_export_availability(client, stubbed_redis, tmp_path, mocker):
+    job_id = str(uuid4())
+    job_dir = tmp_path / job_id
+    job_dir.mkdir()
+    (job_dir / "memo.pdf").write_bytes(b"%PDF-test")
+    mocker.patch.object(routes_module, "_job_dir", lambda jid: tmp_path / jid)
+    stubbed_redis[f"analysis:job:{job_id}"] = {
+        "status": "partial", "memo": _stored_memo(),
+        "errors": ["Earnings transcripts unavailable"],
+        "pdf_available": True, "excel_available": True,
+    }
+    response = await client.get(f"/api/v1/memos/{job_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "partial"
+    assert body["warnings"] == ["Earnings transcripts unavailable"]
+    assert body["exports"]["pdf"].endswith("/pdf")
+    assert body["exports"]["excel"] is None
+    job = (await client.get(f"/api/v1/jobs/{job_id}")).json()
+    assert job["warnings"] == body["warnings"]
+
+
+async def test_failed_job_cannot_download_leftover_file(client, stubbed_redis, tmp_path, mocker):
+    job_id = str(uuid4())
+    (tmp_path / "memo.pdf").write_bytes(b"broken")
+    mocker.patch.object(routes_module, "_job_dir", lambda jid: tmp_path)
+    stubbed_redis[f"analysis:job:{job_id}"] = {"status": "failed", "pdf_available": True}
+    assert (await client.get(f"/api/v1/memos/{job_id}/pdf")).status_code == 404
+
+
+def test_offline_demo_matches_public_contract():
+    from pathlib import Path
+    from src.api.schemas import MemoResponse
+    fixture = Path(__file__).resolve().parents[2] / "frontend/fixtures/demo-memo.json"
+    response = MemoResponse.model_validate_json(fixture.read_text())
+    assert response.status == "partial"
+    assert response.warnings
+    assert response.exports.pdf is None
+    assert response.exports.excel is None
+
+
+async def test_financial_facts_expose_context_and_provenance_without_raw_payload(client, stubbed_redis):
+    from src.fetchers.filings import _parse_xbrl_to_facts
+    from src.models.filing import Filing, Source
+    source = Source(provider="sec-api", url="https://api.sec-api.io/xbrl-to-json", fetched_at=datetime.now(timezone.utc))
+    filing = Filing(ticker="TEST", filing_type="10-K", filing_date=date(2024, 1, 29), accession_no="test-accession", raw_url="https://www.sec.gov/test.htm", source=source)
+    facts = _parse_xbrl_to_facts({"StatementsOfIncome": {"EarningsPerShareDiluted": [{"value": "1.25", "unitRef": "eur-per-shares", "period": {"startDate": "2023-01-01", "endDate": "2023-12-31"}}]}}, filing, source)
+    job_id = str(uuid4())
+    stubbed_redis[f"analysis:job:{job_id}"] = {
+        "status": "partial", "memo": _stored_memo(), "financial_facts": [facts[0].model_dump(mode="json")],
+    }
+    response = await client.get(f"/api/v1/memos/{job_id}")
+    assert response.status_code == 200
+    fact = response.json()["financial_facts"][0]
+    assert fact["unit"] == "EUR/share"
+    assert fact["currency"] == "EUR"
+    assert fact["period"]["start"] == "2023-01-01"
+    assert fact["source"]["accession_no"] == "test-accession"
+    assert fact["source"]["document_url"] == "https://www.sec.gov/test.htm"
+    assert fact["observation_id"] == facts[0].observation_id
+    assert "raw_payload" not in fact

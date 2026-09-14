@@ -25,10 +25,6 @@ export function ProgressView({
   currentStep,
   ticker,
 }: ProgressViewProps) {
-  const remainingSeconds = Math.max(
-    0,
-    Math.ceil((100 - progressPct) * 0.6),
-  );
   return (
     <div className="mx-auto max-w-xl space-y-8">
       <header className="text-center">
@@ -43,13 +39,13 @@ export function ProgressView({
         <Progress value={progressPct} aria-label="Analysis progress" />
         <div className="mt-2 flex justify-between text-sm text-muted-foreground">
           <span>{progressPct}%</span>
-          <span>~{remainingSeconds}s remaining</span>
+          <span>Processing progress; coverage checked at completion</span>
         </div>
       </div>
       <ol className="space-y-2">
         {STEPS.map((step) => {
           const active = currentStep === step.key;
-          const done = !active && progressPct >= step.pct;
+          const done = !active && progressPct > step.pct;
           return (
             <li
               key={step.key}

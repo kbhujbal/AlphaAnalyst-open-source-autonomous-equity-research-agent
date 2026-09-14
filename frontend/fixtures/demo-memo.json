@@ -1,0 +1,35 @@
+{
+  "ticker": "DEMO",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "status": "partial",
+  "warnings": [
+    "Synthetic demonstration: financials, catalysts, valuation, call analysis, and alternative data are intentionally unavailable."
+  ],
+  "sections": {
+    "financial_snapshot": "Insufficient evidence",
+    "recent_catalysts": "Insufficient evidence",
+    "valuation": "Insufficient evidence",
+    "earnings_call_tone_shift": "Insufficient evidence",
+    "alt_data_signals": "Insufficient evidence",
+    "bull_case": "Insufficient evidence",
+    "bear_case": "Insufficient evidence",
+    "risks": "Insufficient evidence",
+    "ticker": "DEMO",
+    "as_of": "2026-01-01",
+    "executive_summary": "This fictional company research note demonstrates the memo layout. It contains no investment recommendation. [F1]",
+    "citations": [
+      {
+        "tag": "F1",
+        "source_type": "fact",
+        "source_id": "demo://fictional-research-note",
+        "snippet": "Synthetic fixture for demonstrating the interface; no real company data."
+      }
+    ]
+  },
+  "exports": {
+    "pdf": null,
+    "excel": null
+  },
+  "cost_usd": "0",
+  "llm_calls": 0
+}

@@ -2,21 +2,24 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import insert, select
+from sqlalchemy import insert
 
 from src.cache import get_json as cache_get_json
 from src.cache import set_json as cache_set_json
 from src.clients.fmp import FmpClient
 from src.clients.polygon import PolygonClient
+from src.db import ensure_company
 from src.db import Company
-from src.db import Fact as FactORM
 from src.db import Price as PriceORM
 from src.db import SessionLocal
 from src.models.filing import Source
 from src.models.market import Divergence, FundamentalSnapshot, Peer, PriceBar
+from src.models.financial import FinancialObservation
+from src.fetchers.financial_store import persist_observations, load_sec_observations
+from src.fetchers.financial_normalization import normalize_fmp, select_sec_reference, latest_annual_revenue
 
 logger = logging.getLogger(__name__)
 
@@ -24,34 +27,12 @@ PRICES_CACHE_TTL = 4 * 3600
 FUNDAMENTALS_CACHE_TTL = 3600
 DIVERGENCE_THRESHOLD = Decimal("0.01")
 
-REVENUE_TAGS = (
-    "Revenues",
-    "RevenueFromContractWithCustomerExcludingAssessedTax",
-    "SalesRevenueNet",
-)
-EPS_TAGS = (
-    "EarningsPerShareDiluted",
-    "IncomeLossFromContinuingOperationsPerDilutedShare",
-)
-
-
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _to_decimal(value: Any) -> Decimal | None:
-    if value is None:
-        return None
-    try:
-        return Decimal(str(value))
-    except (InvalidOperation, ValueError):
-        return None
-
-
 async def _ensure_company(session, ticker: str) -> None:
-    if await session.get(Company, ticker) is None:
-        session.add(Company(ticker=ticker))
-        await session.flush()
+    await ensure_company(session, ticker)
 
 
 async def _persist_prices(prices: list[PriceBar]) -> None:
@@ -79,58 +60,11 @@ async def _persist_prices(prices: list[PriceBar]) -> None:
 
 
 async def _persist_fundamentals(snapshot: FundamentalSnapshot) -> None:
-    rows: list[dict[str, Any]] = []
-    field_to_tag = {
-        "revenue": "Revenue_FMP",
-        "eps": "EpsDiluted_FMP",
-        "net_income": "NetIncome_FMP",
-        "total_assets": "TotalAssets_FMP",
-        "total_liabilities": "TotalLiabilities_FMP",
-        "operating_cash_flow": "OperatingCashFlow_FMP",
-    }
-    for attr, tag in field_to_tag.items():
-        value = getattr(snapshot, attr)
-        if value is None:
-            continue
-        rows.append(
-            {
-                "ticker": snapshot.ticker,
-                "period": snapshot.period,
-                "tag": tag,
-                "value": value,
-                "unit": "USD",
-                "source": "fmp",
-            }
-        )
-    if not rows:
-        return
-    async with SessionLocal() as session:
-        await _ensure_company(session, snapshot.ticker)
-        await session.execute(insert(FactORM), rows)
-        await session.commit()
+    await persist_observations(snapshot.reported_observations or list(snapshot.observations.values()))
 
 
-async def _load_edgar_fundamentals(
-    ticker: str, period: str
-) -> dict[str, Decimal | None]:
-    out: dict[str, Decimal | None] = {"revenue": None, "eps": None}
-    async with SessionLocal() as session:
-        stmt = (
-            select(FactORM.tag, FactORM.value)
-            .where(
-                FactORM.ticker == ticker,
-                FactORM.period == period,
-                FactORM.source == "sec-api",
-                FactORM.tag.in_(list(REVENUE_TAGS) + list(EPS_TAGS)),
-            )
-        )
-        rows = (await session.execute(stmt)).all()
-    for tag, value in rows:
-        if tag in REVENUE_TAGS and out["revenue"] is None:
-            out["revenue"] = value
-        elif tag in EPS_TAGS and out["eps"] is None:
-            out["eps"] = value
-    return out
+async def _load_edgar_fundamentals(ticker: str, period: str) -> list[FinancialObservation]:
+    return await load_sec_observations(ticker, period)
 
 
 def _relative_diff(reference: Decimal, other: Decimal) -> Decimal | None:
@@ -145,7 +79,7 @@ def _cross_check(
     """Returns (chosen_value, divergence, exceeds_threshold, source_label)."""
     if fmp_value is not None and edgar_value is not None:
         diff = _relative_diff(edgar_value, fmp_value)
-        exceeds = diff is not None and diff > DIVERGENCE_THRESHOLD
+        exceeds = (fmp_value != 0) if edgar_value == 0 else (diff is not None and diff > DIVERGENCE_THRESHOLD)
         if exceeds:
             logger.warning(
                 "cross_validation_diverged field=%s fmp=%s edgar=%s diff=%s",
@@ -258,89 +192,76 @@ async def fetch_prices(ticker: str, days: int = 365) -> list[PriceBar]:
     return bars
 
 
-async def fetch_fundamentals(ticker: str) -> FundamentalSnapshot:
+async def fetch_fundamentals(ticker: str, *, refresh: bool = False) -> FundamentalSnapshot:
     ticker = ticker.upper()
-    cache_key = f"fundamentals:{ticker}"
-    cached = await cache_get_json(cache_key)
+    cache_key = f"fundamentals:v2:{ticker}"
+    cached = None if refresh else await cache_get_json(cache_key)
     if cached:
         return FundamentalSnapshot.model_validate(cached)
 
     async with FmpClient() as fmp:
-        income = await fmp.income_statement(ticker, limit=1)
-        balance = await fmp.balance_sheet(ticker, limit=1)
-        cashflow = await fmp.cash_flow(ticker, limit=1)
+        income = await fmp.income_statement(ticker, limit=6)
+        balance = await fmp.balance_sheet(ticker, limit=6)
+        cashflow = await fmp.cash_flow(ticker, limit=6)
         key_metrics = await fmp.key_metrics_ttm(ticker)
 
-    if not income:
-        raise RuntimeError(f"FMP returned no income statements for {ticker}")
-    income0 = income[0]
-    balance0 = balance[0] if balance else {}
-    cashflow0 = cashflow[0] if cashflow else {}
-    metrics0 = key_metrics[0] if key_metrics else {}
+    now = _now_utc()
+    reported = [
+        fact for name, rows in (
+            ("income-statement", income), ("balance-sheet-statement", balance),
+            ("cash-flow-statement", cashflow), ("key-metrics-ttm", key_metrics),
+        ) for fact in normalize_fmp(ticker, rows, name, now)
+    ]
+    revenue = latest_annual_revenue(reported)
+    warnings: list[str] = []
+    selected: dict[str, FinancialObservation] = {"revenue": revenue}
+    for metric in ("eps", "net_income", "total_assets", "total_liabilities", "operating_cash_flow", "pe_ttm", "market_cap"):
+        matches = [fact for fact in reported if fact.metric == metric]
+        if metric not in {"pe_ttm", "market_cap"}:
+            matches = [fact for fact in matches if fact.currency == revenue.currency
+                       and fact.period.end == revenue.period.end
+                       and (fact.period.kind == "instant" or (
+                           fact.period.start is not None and fact.period.start == revenue.period.start
+                       )) and fact.source.filing_date == revenue.source.filing_date
+                       and fact.source.document_url == revenue.source.document_url]
+        if len({(fact.value, fact.unit, fact.period.model_dump_json(), fact.source.document_url, fact.payload_hash) for fact in matches}) == 1:
+            selected[metric] = min(matches, key=lambda fact: fact.observation_id)
+        else:
+            warnings.append(f"{metric}: missing, conflicting, or incompatible reporting context")
 
-    period = str(income0.get("date") or "").strip()
-    if not period:
-        raise RuntimeError(f"FMP income statement for {ticker} missing 'date'")
-
-    fmp_revenue = _to_decimal(income0.get("revenue"))
-    fmp_eps = _to_decimal(income0.get("epsdiluted") or income0.get("eps"))
-
-    edgar = await _load_edgar_fundamentals(ticker, period)
-    edgar_revenue = edgar.get("revenue")
-    edgar_eps = edgar.get("eps")
-
-    if edgar_revenue is None and edgar_eps is None:
-        logger.warning(
-            "edgar_facts_missing ticker=%s period=%s — cross-check unavailable",
-            ticker,
-            period,
+    edgar = await _load_edgar_fundamentals(ticker, revenue.period.end.isoformat())
+    divergences: list[Divergence] = []
+    checked: set[str] = set()
+    for metric in ("revenue", "eps"):
+        vendor_fact = selected.get(metric)
+        reference = select_sec_reference(vendor_fact, edgar) if vendor_fact else None
+        value, divergence, exceeds, chosen = _cross_check(
+            metric, vendor_fact.value if vendor_fact else None, reference.value if reference else None,
         )
-
-    revenue_val, rev_div, rev_diverged, _ = _cross_check(
-        "revenue", fmp_revenue, edgar_revenue
-    )
-    eps_val, eps_div, eps_diverged, _ = _cross_check(
-        "eps", fmp_eps, edgar_eps
-    )
-
-    confidence: Literal["high", "low"]
-    if rev_diverged or eps_diverged:
-        confidence = "low"
-    elif edgar_revenue is None and edgar_eps is None:
-        confidence = "low"
-    else:
-        confidence = "high"
-
+        divergences.append(divergence)
+        if reference is not None:
+            selected[metric] = reference
+            if not exceeds and vendor_fact.source.document_url:
+                checked.add(metric)
+            if exceeds:
+                warnings.append(f"{metric}: SEC/vendor values diverge beyond tolerance")
+        else:
+            warnings.append(f"{metric}: no unambiguous SEC fact with matching dates, currency, units, dimensions, and filing version")
+    for fact in selected.values():
+        warnings.extend(f"{fact.metric}: {flag}" for flag in fact.quality_flags)
+    providers = {fact.source.provider for fact in selected.values()}
     snapshot = FundamentalSnapshot(
-        ticker=ticker,
-        period=period,
-        revenue=revenue_val,
-        eps=eps_val,
-        net_income=_to_decimal(income0.get("netIncome")),
-        total_assets=_to_decimal(balance0.get("totalAssets")),
-        total_liabilities=_to_decimal(balance0.get("totalLiabilities")),
-        operating_cash_flow=_to_decimal(cashflow0.get("operatingCashFlow")),
-        pe_ttm=_to_decimal(metrics0.get("peRatioTTM")),
-        market_cap=_to_decimal(
-            metrics0.get("marketCapTTM") or metrics0.get("marketCap")
-        ),
-        confidence=confidence,
-        divergences=[rev_div, eps_div],
-        source=Source(
-            provider="fmp+edgar"
-            if (edgar_revenue is not None or edgar_eps is not None)
-            else "fmp",
-            url=f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}",
-            fetched_at=_now_utc(),
-        ),
+        ticker=ticker, period=revenue.period.end.isoformat(), currency=revenue.currency,
+        **{metric: fact.value for metric, fact in selected.items()},
+        observations=selected, reported_observations=reported,
+        warnings=list(dict.fromkeys(warnings)),
+        confidence="high" if checked == {"revenue", "eps"} else "low",
+        divergences=divergences,
+        source=Source(provider="fmp+edgar" if "sec-api" in providers else "fmp",
+                      url=revenue.source.url, fetched_at=now),
     )
-
     await _persist_fundamentals(snapshot)
-    await cache_set_json(
-        cache_key,
-        snapshot.model_dump(mode="json"),
-        ttl=FUNDAMENTALS_CACHE_TTL,
-    )
+    await cache_set_json(cache_key, snapshot.model_dump(mode="json"), ttl=FUNDAMENTALS_CACHE_TTL)
     return snapshot
 
 

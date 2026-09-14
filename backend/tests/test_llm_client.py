@@ -131,3 +131,15 @@ async def test_cache_system_does_not_transform_for_non_anthropic_models(
 
     system_msg = mock_acompletion.await_args.kwargs["messages"][0]
     assert system_msg["content"] == "sys text"
+
+
+async def test_explicit_settings_keys_reach_primary_and_fallback(mocker, models_config):
+    from src.llm.client import settings
+    mocker.patch.object(settings, "anthropic_api_key", "test-anthropic")
+    mocker.patch.object(settings, "openai_api_key", "test-openai")
+    complete = mocker.patch("src.llm.client.litellm.acompletion", new=AsyncMock(return_value=_fake_response()))
+    mocker.patch("src.llm.client.litellm.completion_cost", return_value=0)
+    await AnalystLLM(config_path=models_config).complete(task="news_classification", system="s", prompt="p")
+    kwargs = complete.await_args.kwargs
+    assert kwargs["api_key"] == "test-anthropic"
+    assert kwargs["fallbacks"] == [{"model": "openai/gpt-4o-mini", "api_key": "test-openai"}]

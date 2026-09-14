@@ -17,7 +17,10 @@ tags listed in FACTS. Tags look like [F1], [F2], etc.
 phrase "Insufficient evidence" rather than speculating.
 3. Do not invent any number, name, date, or event. If FACTS does not \
 contain it, you cannot use it.
-4. Output STRICTLY in the JSON schema requested. No prose outside the JSON.
+4. Preserve the supplied currency, quantity units, and reporting interval. Never \
+infer USD or a calendar year from a ticker. Do not label undated TTM/market \
+observations as annual financials. Disclose unknown context.
+5. Output STRICTLY in the JSON schema requested. No prose outside the JSON.
 
 Section guidance:
 - executive_summary: 3-5 sentences capturing thesis + valuation gap.

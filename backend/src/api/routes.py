@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import FileResponse
 
 from src import cache
+from src.diagnostics import public_diagnostic
 from src.agents.synthesizer import Memo
 from src.api.schemas import (
     AnalyzeRequest,
@@ -30,6 +32,14 @@ router = APIRouter(prefix="/api/v1")
 JOB_KEY = "analysis:job:{job_id}"
 
 
+def _export_path(state: dict[str, Any] | None, job_id: UUID, kind: str) -> Path | None:
+    if not state or state.get("status") not in {"complete", "partial"}:
+        return None
+    filename = "memo.pdf" if kind == "pdf" else "model.xlsx"
+    path = _job_dir(str(job_id)) / filename
+    return path if state.get(f"{kind}_available") and path.is_file() else None
+
+
 async def _run_analyze(ticker: str, job_id: str) -> None:
     """Background task: catches every failure and writes an error state."""
     try:
@@ -40,7 +50,7 @@ async def _run_analyze(ticker: str, job_id: str) -> None:
             JOB_KEY.format(job_id=job_id),
             {
                 "job_id": job_id,
-                "status": "error",
+                "status": "failed",
                 "progress_pct": 0,
                 "current_step": None,
                 "error": f"cost cap exceeded: {exc}",
@@ -53,10 +63,10 @@ async def _run_analyze(ticker: str, job_id: str) -> None:
             JOB_KEY.format(job_id=job_id),
             {
                 "job_id": job_id,
-                "status": "error",
+                "status": "failed",
                 "progress_pct": 0,
                 "current_step": None,
-                "error": str(exc)[:500],
+                "error": public_diagnostic(str(exc))[:500],
             },
             ttl=86400,
         )
@@ -74,6 +84,12 @@ async def _run_analyze(ticker: str, job_id: str) -> None:
 async def post_analyze(
     req: AnalyzeRequest, background: BackgroundTasks
 ) -> AnalyzeResponse:
+    missing = settings.analysis_configuration_errors()
+    if missing:
+        raise HTTPException(
+            status_code=503,
+            detail="Live analysis is not configured. Set: " + ", ".join(missing),
+        )
     job_id = uuid4()
     initial = {
         "job_id": str(job_id),
@@ -103,6 +119,7 @@ async def get_job(job_id: UUID) -> JobStatus:
         progress_pct=int(state.get("progress_pct", 0)),
         current_step=state.get("current_step"),
         error=state.get("error"),
+        warnings=state.get("errors", []),
     )
 
 
@@ -119,7 +136,7 @@ async def get_memo(job_id: UUID) -> MemoResponse:
     state = await cache.get_json(JOB_KEY.format(job_id=job_id))
     if state is None:
         raise HTTPException(status_code=404, detail="memo not found")
-    if state.get("status") != "complete":
+    if state.get("status") not in {"complete", "partial"}:
         raise HTTPException(
             status_code=404,
             detail=f"memo not ready (status={state.get('status', 'unknown')})",
@@ -140,11 +157,14 @@ async def get_memo(job_id: UUID) -> MemoResponse:
         generated_at=generated_at,
         sections=memo,
         exports=ExportLinks(
-            pdf=f"/api/v1/memos/{job_id}/pdf",
-            excel=f"/api/v1/memos/{job_id}/excel",
+            pdf=(f"/api/v1/memos/{job_id}/pdf" if _export_path(state, job_id, "pdf") else None),
+            excel=(f"/api/v1/memos/{job_id}/excel" if _export_path(state, job_id, "excel") else None),
         ),
         cost_usd=Decimal(str(state.get("cost_usd", "0"))),
         llm_calls=int(state.get("llm_calls", 0)),
+        status=state["status"],
+        financial_facts=state.get("financial_facts", []),
+        warnings=state.get("errors", []),
     )
 
 
@@ -155,8 +175,9 @@ async def get_memo(job_id: UUID) -> MemoResponse:
     tags=["memos"],
 )
 async def get_memo_pdf(job_id: UUID) -> FileResponse:
-    pdf_path = _job_dir(str(job_id)) / "memo.pdf"
-    if not pdf_path.exists():
+    state = await cache.get_json(JOB_KEY.format(job_id=job_id))
+    pdf_path = _export_path(state, job_id, "pdf")
+    if pdf_path is None:
         raise HTTPException(status_code=404, detail="PDF not found")
     return FileResponse(
         str(pdf_path),
@@ -172,8 +193,9 @@ async def get_memo_pdf(job_id: UUID) -> FileResponse:
     tags=["memos"],
 )
 async def get_memo_excel(job_id: UUID) -> FileResponse:
-    xlsx_path = _job_dir(str(job_id)) / "model.xlsx"
-    if not xlsx_path.exists():
+    state = await cache.get_json(JOB_KEY.format(job_id=job_id))
+    xlsx_path = _export_path(state, job_id, "excel")
+    if xlsx_path is None:
         raise HTTPException(status_code=404, detail="Excel model not found")
     return FileResponse(
         str(xlsx_path),

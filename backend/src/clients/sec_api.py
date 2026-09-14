@@ -15,6 +15,7 @@ Reference: https://sec-api.io/docs/xbrl-to-json-converter-api
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -75,7 +76,7 @@ class SecApiClient:
             with attempt:
                 response = await self._client.get(self.xbrl_url, params=params)
                 response.raise_for_status()
-                return response.json()
+                return response.json(parse_float=Decimal)
         raise SecApiError(
             f"sec-api XBRL request failed after retries: {accession_no}"
         )

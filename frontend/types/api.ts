@@ -131,8 +131,22 @@ export interface components {
              */
             status: "queued";
         };
+        /** BoundaryEvidence */
+        BoundaryEvidence: {
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Locator */
+            locator: string;
+            /** Payload Hash */
+            payload_hash: string;
+        };
         /** Citation */
         Citation: {
+            /** Tag */
+            tag?: string | null;
             /**
              * Source Type
              * @enum {string}
@@ -146,9 +160,44 @@ export interface components {
         /** ExportLinks */
         ExportLinks: {
             /** Pdf */
-            pdf: string;
+            pdf?: string | null;
             /** Excel */
-            excel: string;
+            excel?: string | null;
+        };
+        /** FinancialObservation */
+        FinancialObservation: {
+            /** Ticker */
+            ticker: string;
+            /** Metric */
+            metric: string;
+            /** Tag */
+            tag: string;
+            /** Value */
+            value: string;
+            /** Unit */
+            unit: string;
+            /** Currency */
+            currency?: string | null;
+            period: components["schemas"]["ReportingPeriod"];
+            /** Dimensions */
+            dimensions?: {
+                [key: string]: string;
+            };
+            source: components["schemas"]["ObservationSource"];
+            /** Payload Hash */
+            payload_hash: string;
+            /** Reported Decimals */
+            reported_decimals?: string | null;
+            /**
+             * Scale
+             * @default 1
+             * @constant
+             */
+            scale: 1;
+            /** Quality Flags */
+            quality_flags?: string[];
+            /** Observation Id */
+            readonly observation_id: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -180,13 +229,15 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "complete" | "error";
+            status: "queued" | "running" | "complete" | "partial" | "failed" | "error";
             /** Progress Pct */
             progress_pct: number;
             /** Current Step */
             current_step?: string | null;
             /** Error */
             error?: string | null;
+            /** Warnings */
+            warnings?: string[];
         };
         /** Memo */
         Memo: {
@@ -233,6 +284,66 @@ export interface components {
             cost_usd: string;
             /** Llm Calls */
             llm_calls: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "partial";
+            /** Financial Facts */
+            financial_facts?: components["schemas"]["FinancialObservation"][];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** ObservationSource */
+        ObservationSource: {
+            /** Provider */
+            provider: string;
+            /** Url */
+            url: string;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Document Url */
+            document_url?: string | null;
+            /** Accession No */
+            accession_no?: string | null;
+            /** Filing Date */
+            filing_date?: string | null;
+            /** Accepted At */
+            accepted_at?: string | null;
+            /** Locator */
+            locator: string;
+        };
+        /** ReportingPeriod */
+        ReportingPeriod: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "instant" | "duration" | "unknown";
+            /** Start */
+            start?: string | null;
+            /** End */
+            end?: string | null;
+            /**
+             * Basis
+             * @default unknown
+             * @enum {string}
+             */
+            basis: "annual" | "quarterly" | "ytd" | "ttm" | "unknown";
+            /** Fiscal Year */
+            fiscal_year?: string | null;
+            /** Fiscal Period */
+            fiscal_period?: string | null;
+            /**
+             * Start Method
+             * @default unknown
+             * @enum {string}
+             */
+            start_method: "reported" | "prior_annual_end" | "unknown";
+            start_evidence?: components["schemas"]["BoundaryEvidence"] | null;
         };
         /** ValidationError */
         ValidationError: {

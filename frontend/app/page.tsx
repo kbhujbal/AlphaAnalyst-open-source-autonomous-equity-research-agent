@@ -21,23 +21,19 @@ const HOW_IT_WORKS = [
   {
     step: 2,
     title: "Analyze",
-    body: "Five LLM agents extract claims and a Devil's Advocate (different model) argues the bear case.",
+    body: "Specialist agents draft findings and a skeptical review step challenges the narrative.",
   },
   {
     step: 3,
     title: "Value",
-    body: "Pure-Python DCF in Decimal + peer-comparable multiples + a 5×5 sensitivity grid.",
+    body: "Experimental Python valuation and peer comparisons; assumptions require analyst review.",
   },
   {
     step: 4,
     title: "Cite",
-    body: "Every numerical claim in the memo carries a [source] tag the synthesizer validates.",
+    body: "Source tags connect findings to references. Claim-level verification remains incomplete.",
   },
 ];
-
-// Sample memo for the public homepage. The real demo job_id will be created
-// in Phase 17's eval suite — until then this link is a placeholder.
-const SAMPLE_JOB_ID = "00000000-0000-0000-0000-000000000000";
 
 export default function HomePage() {
   return (
@@ -47,9 +43,9 @@ export default function HomePage() {
           AlphaAnalyst
         </h1>
         <p className="mt-4 text-lg text-muted-foreground">
-          Open-source autonomous equity research agent. Given a US stock ticker,
-          produce a research memo with DCF valuation, news analysis, and full
-          citations.
+          Open-source equity research prototype. Given a US stock ticker,
+          draft a research memo with experimental valuation, news analysis, and source
+          references.
         </p>
         <div className="mt-8">
           <TickerSearch />
@@ -57,10 +53,10 @@ export default function HomePage() {
         <p className="mt-4 text-sm text-muted-foreground">
           Or browse a{" "}
           <Link
-            href={`/analysis/${SAMPLE_JOB_ID}`}
+            href="/demo"
             className="font-medium text-foreground underline-offset-2 hover:underline"
           >
-            sample memo
+            fictional offline demo
           </Link>
           .
         </p>
@@ -75,7 +71,7 @@ export default function HomePage() {
           <CardContent>
             <CardDescription>
               SEC filings, earnings transcripts, news, market data, and macro
-              indicators — fetched in parallel and cross-validated.
+              indicators — fetched in parallel, with limited financial cross-checks.
             </CardDescription>
           </CardContent>
         </Card>
@@ -86,8 +82,8 @@ export default function HomePage() {
           </CardHeader>
           <CardContent>
             <CardDescription>
-              Every numerical claim is tagged with its source. The synthesizer
-              downgrades sections that lack evidence rather than speculating.
+              Source references accompany findings. Missing coverage and processing
+              failures are disclosed; analysts must verify the underlying claims.
             </CardDescription>
           </CardContent>
         </Card>
@@ -98,8 +94,8 @@ export default function HomePage() {
           </CardHeader>
           <CardContent>
             <CardDescription>
-              Pure-Python valuation in Decimal, peer-relative multiples, and a
-              5×5 sensitivity grid you can edit in the exported Excel model.
+              Experimental Python valuation and peer comparisons. Excel exports
+              are snapshots; changing inputs does not recalculate the model.
             </CardDescription>
           </CardContent>
         </Card>

@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from src.clients.finnhub import FinnhubClient
 from src.clients.google_news import GoogleNewsClient
 from src.clients.marketaux import MarketauxClient
+from src.db import ensure_company
 from src.db import Company
 from src.db import News as NewsORM
 from src.db import SessionLocal
@@ -238,9 +239,7 @@ async def _persist_news(ticker: str, articles: list[NewsArticle]) -> None:
     if not articles:
         return
     async with SessionLocal() as session:
-        if await session.get(Company, ticker) is None:
-            session.add(Company(ticker=ticker))
-            await session.flush()
+        await ensure_company(session, ticker)
 
         rows = [
             {

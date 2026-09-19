@@ -875,8 +875,8 @@ Historical analysis requires PostgreSQL, Redis, `SEC_API_KEY` and a real SEC con
 `EDGAR_USER_AGENT`; LLM, embedding and FMP credentials are not required. Existing
 migrations through `0005` suffice. No dependency or migration was added. OpenAPI,
 generated TypeScript contracts and `startHistoricalAnalysis`/`getHistoricalAnalysis`
-client helpers cover the endpoints; an interactive historical-analysis screen is
-not implemented.
+client helpers cover the endpoints. The historical UI described below uses the
+same endpoints and cutoff/coverage contracts.
 
 Operational limits remain: jobs run through FastAPI `BackgroundTasks`; job/results
 expire from Redis after 24 hours, while verified source and calculation records
@@ -887,3 +887,60 @@ historical issuer identity or contemporaneous vendor availability. Historical
 prices/currencies/share classes, news, estimates, transcripts, macro inputs and
 full historical memo generation remain pending, along with live SEC/sec-api and
 PostgreSQL deployment validation.
+
+
+## Historical-analysis UI
+
+Open `/historical` from the **History** navigation item or the home-page historical
+financials link. Select a ticker and UTC end-of-day availability cutoff. The form
+validates real calendar dates from `1994-01-01` through today (UTC), normalizes the
+ticker, and exposes bounded lookback/filing/archive-page limits and an optional
+refresh. Zero archive pages is valid and can yield disclosed partial discovery.
+Submission/configuration failures appear inline and retain the chosen inputs.
+
+Successful submission opens `/historical/{jobId}`. Queued/running jobs show the
+chosen cutoff and processing progress, explicitly distinguished from coverage.
+Partial **and failed** terminal jobs load their historical result so missing-data
+reasons remain inspectable. An accidental historical job opened through the live
+analysis route links to its historical result and does not fetch a live memo.
+
+The result view separates filing discovery from supported financial coverage,
+shows requested filing-date interval/forms/budgets, advertised and loaded archive
+pages, discovered and returned filings, actual report/filing/acceptance dates and
+per-accession extraction outcomes. Structured missing-data reasons are visible
+before the financial outputs, including metric/accession context; processing and
+calculation warnings remain expandable. Missing discovery metadata is labeled
+unavailable, rather than presented as zero or complete coverage.
+
+Selected financial contexts retain exact decimal strings, reporting windows, units,
+currencies and provenance. Existing calculation views expose formula steps, filing
+selection audits, source passages and trace JSON downloads. Discovery manifests
+and retained financial source passages link to the historical result's scoped
+evidence endpoint. Only supported result-scoped snapshot paths are linked to the
+configured API origin. Runtime validation rejects missing coverage flags, warning
+arrays, inconsistent ticker/cutoff metadata and misleading `complete` responses.
+
+The UI labels its SEC-only scope, sources retrieved now, current ticker-to-CIK
+mapping limitation and 24-hour result retention. Historical market data and full
+research memos are not presented as available. Polling stops at terminal states;
+expired/missing jobs and unavailable/invalid results offer explicit errors and
+retry/new-analysis actions.
+
+Validation includes Node tests for cutoff/date/budget rules, historical versus
+live job handling, strict response contracts, safe evidence paths, and server
+rendering of the actual result component for partial, failed and missing-coverage
+responses. The fixture in `frontend/tests/fixtures/historical-analysis.json` is
+fictional TEST data validated by the backend response model; it is test-only and
+is not exposed as live research. A test-only TypeScript loader uses the existing
+compiler to render TSX without adding dependencies. Browser checks with a local
+fixture cover cutoff persistence, queued-to-terminal polling, partial/failed
+results, source inspection, actionable configuration errors and a 375px layout.
+Live-account end-to-end validation and a broader automated browser/accessibility
+suite remain pending.
+
+Other pending work includes historical run comparison, saved/cross-session history
+beyond job links, durable restart-safe jobs/results, resumable backfills and a
+scenario editor within the historical form (the API already accepts explicit DCF
+scenarios). Historical prices, market caps, news and estimates still require their
+own point-in-time data foundation before full historical research is supported.
+No dependency, API schema or database migration is added by this UI stage.

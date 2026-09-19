@@ -51,7 +51,7 @@ export default function HomePage() {
           <TickerSearch />
         </div>
         <p className="mt-4 text-sm text-muted-foreground">
-          Or browse a{" "}
+          <Link href="/historical" className="font-medium text-foreground underline underline-offset-2">Analyze historical financials</Link> or browse a{" "}
           <Link
             href="/demo"
             className="font-medium text-foreground underline-offset-2 hover:underline"

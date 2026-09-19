@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { canLoadLiveMemo } from "@/lib/api/historical";
 import { useParams } from "next/navigation";
 
 import { ProgressView } from "@/components/analysis/progress-view";
@@ -7,7 +9,7 @@ import { Container } from "@/components/layout/container";
 import { MemoView } from "@/components/memo/memo-view";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { isJobPending, isReportReady } from "@/lib/api/job-state";
+import { isJobPending } from "@/lib/api/job-state";
 import { useJobStatus, useMemo as useMemoQuery } from "@/lib/api/hooks";
 
 export default function AnalysisPage() {
@@ -17,7 +19,7 @@ export default function AnalysisPage() {
   const job = useJobStatus(jobId);
   const memoQuery = useMemoQuery(
     jobId,
-    isReportReady(job.data?.status),
+    canLoadLiveMemo(job.data),
   );
 
   if (job.isLoading) {
@@ -49,6 +51,11 @@ export default function AnalysisPage() {
         />
       </Container>
     );
+  }
+
+  if (job.data.analysis_kind === "historical-financials") {
+    return <Container className="py-12"><h1 className="text-2xl font-semibold">Historical financial analysis</h1>
+      <Link className="mt-4 inline-block underline" href={`/historical/${jobId}`}>View historical progress, filing coverage and results</Link></Container>;
   }
 
   if (job.data.status === "failed" || job.data.status === "error") {

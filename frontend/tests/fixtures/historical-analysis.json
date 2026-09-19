@@ -1,0 +1,641 @@
+{
+  "job_id": "123e4567-e89b-42d3-a456-426614174000",
+  "ticker": "TEST",
+  "as_of": "2025-03-01",
+  "generated_at": "2026-11-13T00:00:00Z",
+  "analysis_kind": "historical-financials",
+  "scope": "sec-filing-financials-only",
+  "cutoff_policy": "utc-end-of-day-filing-availability-v1",
+  "status": "partial",
+  "request": {
+    "ticker": "TEST",
+    "as_of": "2025-03-01",
+    "lookback_days": 2192,
+    "max_filings": 1,
+    "max_archive_files": 0,
+    "refresh": false,
+    "dcf_scenario": null
+  },
+  "filing_coverage": {
+    "ticker": "TEST",
+    "as_of": "2025-03-01",
+    "requested_start": "2019-03-01",
+    "forms": [
+      "10-K",
+      "10-K/A",
+      "10-Q",
+      "10-Q/A"
+    ],
+    "coverage_complete": false,
+    "archive_pages_available": 2,
+    "archive_pages_loaded": 0,
+    "filings_discovered": 3,
+    "filings": [
+      {
+        "ticker": "TEST",
+        "filing_type": "10-K",
+        "filing_date": "2025-02-01",
+        "accession_no": "0000000123-25-000001",
+        "raw_url": "https://www.sec.gov/Archives/edgar/data/123/000000012325000001/report.htm",
+        "primary_document": null,
+        "report_date": "2024-12-31",
+        "accepted_at": null,
+        "source": {
+          "provider": "sec-edgar",
+          "url": "https://data.sec.gov/submissions/CIK0000000123.json",
+          "fetched_at": "2026-11-13T00:00:00Z"
+        }
+      }
+    ],
+    "manifest_document_ids": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "warnings": [
+      "Historical submissions archive limit reached; coverage is partial"
+    ],
+    "unresolved_amendments": []
+  },
+  "extractions": [
+    {
+      "accession_no": "0000000123-25-000001",
+      "filing_type": "10-K",
+      "status": "extracted",
+      "observation_count": 2,
+      "error": null
+    }
+  ],
+  "financial_coverage_complete": false,
+  "reconciliation": null,
+  "financial_facts": [
+    {
+      "observation": {
+        "ticker": "TEST",
+        "metric": "revenue",
+        "tag": "revenue",
+        "value": "100",
+        "unit": "USD",
+        "currency": "USD",
+        "period": {
+          "kind": "duration",
+          "start": "2024-01-01",
+          "end": "2024-12-31",
+          "basis": "annual",
+          "fiscal_year": null,
+          "fiscal_period": null,
+          "start_method": "reported",
+          "start_evidence": null
+        },
+        "dimensions": {},
+        "source": {
+          "provider": "sec-api",
+          "url": "https://example.com/TEST",
+          "fetched_at": "2025-03-01T00:00:00Z",
+          "document_url": "https://example.com/TEST/filing",
+          "accession_no": null,
+          "filing_date": "2025-02-01",
+          "accepted_at": null,
+          "locator": "/revenue"
+        },
+        "payload_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+        "reported_decimals": null,
+        "scale": 1,
+        "quality_flags": [],
+        "observation_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00"
+      },
+      "passages": [
+        {
+          "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+          "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+          "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 1,
+          "end": 59,
+          "text": "\"period\":{\"endDate\":\"2024-12-31\",\"startDate\":\"2024-01-01\"}",
+          "text_hash": "e3999b8154788f92973c2418826cc7118695719cceee92bf9a175a176244896a",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+        },
+        {
+          "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+          "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+          "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 60,
+          "end": 75,
+          "text": "\"unitRef\":\"USD\"",
+          "text_hash": "b1d4e76acd0793cff3e8a2ff506f0f0874cf8d1b3b74fd3c93e30164035382b2",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+        },
+        {
+          "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+          "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+          "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 76,
+          "end": 89,
+          "text": "\"value\":\"100\"",
+          "text_hash": "fe8a0653d9bce5092a5613d012b00ed27d78199449dd8a4a9e79ab417a3b5797",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+        }
+      ]
+    },
+    {
+      "observation": {
+        "ticker": "TEST",
+        "metric": "revenue",
+        "tag": "revenue",
+        "value": "100",
+        "unit": "USD",
+        "currency": "USD",
+        "period": {
+          "kind": "duration",
+          "start": "2023-01-01",
+          "end": "2023-12-31",
+          "basis": "annual",
+          "fiscal_year": null,
+          "fiscal_period": null,
+          "start_method": "reported",
+          "start_evidence": null
+        },
+        "dimensions": {},
+        "source": {
+          "provider": "sec-api",
+          "url": "https://example.com/TEST",
+          "fetched_at": "2025-03-01T00:00:00Z",
+          "document_url": "https://example.com/TEST/filing",
+          "accession_no": null,
+          "filing_date": "2025-02-01",
+          "accepted_at": null,
+          "locator": "/revenue"
+        },
+        "payload_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+        "reported_decimals": null,
+        "scale": 1,
+        "quality_flags": [],
+        "observation_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619"
+      },
+      "passages": [
+        {
+          "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+          "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+          "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 1,
+          "end": 59,
+          "text": "\"period\":{\"endDate\":\"2023-12-31\",\"startDate\":\"2023-01-01\"}",
+          "text_hash": "08f2a13e7c7da283b321eb528ca6c06cbba83128fbadf2e5535eac045358035d",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+        },
+        {
+          "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+          "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+          "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 60,
+          "end": 75,
+          "text": "\"unitRef\":\"USD\"",
+          "text_hash": "b1d4e76acd0793cff3e8a2ff506f0f0874cf8d1b3b74fd3c93e30164035382b2",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+        },
+        {
+          "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+          "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+          "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 76,
+          "end": 89,
+          "text": "\"value\":\"100\"",
+          "text_hash": "fe8a0653d9bce5092a5613d012b00ed27d78199449dd8a4a9e79ab417a3b5797",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+        }
+      ]
+    }
+  ],
+  "retained_sources": [
+    {
+      "observation": {
+        "ticker": "TEST",
+        "metric": "revenue",
+        "tag": "revenue",
+        "value": "100",
+        "unit": "USD",
+        "currency": "USD",
+        "period": {
+          "kind": "duration",
+          "start": "2024-01-01",
+          "end": "2024-12-31",
+          "basis": "annual",
+          "fiscal_year": null,
+          "fiscal_period": null,
+          "start_method": "reported",
+          "start_evidence": null
+        },
+        "dimensions": {},
+        "source": {
+          "provider": "sec-api",
+          "url": "https://example.com/TEST",
+          "fetched_at": "2025-03-01T00:00:00Z",
+          "document_url": "https://example.com/TEST/filing",
+          "accession_no": null,
+          "filing_date": "2025-02-01",
+          "accepted_at": null,
+          "locator": "/revenue"
+        },
+        "payload_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+        "reported_decimals": null,
+        "scale": 1,
+        "quality_flags": [],
+        "observation_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00"
+      },
+      "passages": [
+        {
+          "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+          "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+          "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 1,
+          "end": 59,
+          "text": "\"period\":{\"endDate\":\"2024-12-31\",\"startDate\":\"2024-01-01\"}",
+          "text_hash": "e3999b8154788f92973c2418826cc7118695719cceee92bf9a175a176244896a",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+        },
+        {
+          "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+          "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+          "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 60,
+          "end": 75,
+          "text": "\"unitRef\":\"USD\"",
+          "text_hash": "b1d4e76acd0793cff3e8a2ff506f0f0874cf8d1b3b74fd3c93e30164035382b2",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+        },
+        {
+          "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+          "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+          "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 76,
+          "end": 89,
+          "text": "\"value\":\"100\"",
+          "text_hash": "fe8a0653d9bce5092a5613d012b00ed27d78199449dd8a4a9e79ab417a3b5797",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+        }
+      ]
+    },
+    {
+      "observation": {
+        "ticker": "TEST",
+        "metric": "revenue",
+        "tag": "revenue",
+        "value": "100",
+        "unit": "USD",
+        "currency": "USD",
+        "period": {
+          "kind": "duration",
+          "start": "2023-01-01",
+          "end": "2023-12-31",
+          "basis": "annual",
+          "fiscal_year": null,
+          "fiscal_period": null,
+          "start_method": "reported",
+          "start_evidence": null
+        },
+        "dimensions": {},
+        "source": {
+          "provider": "sec-api",
+          "url": "https://example.com/TEST",
+          "fetched_at": "2025-03-01T00:00:00Z",
+          "document_url": "https://example.com/TEST/filing",
+          "accession_no": null,
+          "filing_date": "2025-02-01",
+          "accepted_at": null,
+          "locator": "/revenue"
+        },
+        "payload_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+        "reported_decimals": null,
+        "scale": 1,
+        "quality_flags": [],
+        "observation_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619"
+      },
+      "passages": [
+        {
+          "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+          "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+          "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 1,
+          "end": 59,
+          "text": "\"period\":{\"endDate\":\"2023-12-31\",\"startDate\":\"2023-01-01\"}",
+          "text_hash": "08f2a13e7c7da283b321eb528ca6c06cbba83128fbadf2e5535eac045358035d",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+        },
+        {
+          "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+          "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+          "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 60,
+          "end": 75,
+          "text": "\"unitRef\":\"USD\"",
+          "text_hash": "b1d4e76acd0793cff3e8a2ff506f0f0874cf8d1b3b74fd3c93e30164035382b2",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+        },
+        {
+          "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+          "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+          "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+          "source_url": "https://example.com/TEST",
+          "scope": "provider_record",
+          "start": 76,
+          "end": 89,
+          "text": "\"value\":\"100\"",
+          "text_hash": "fe8a0653d9bce5092a5613d012b00ed27d78199449dd8a4a9e79ab417a3b5797",
+          "retrieved_at": "2025-03-01T00:00:00Z",
+          "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+        }
+      ]
+    }
+  ],
+  "latest_filing_date": "2025-02-01",
+  "latest_financial_period_end": "2024-12-31",
+  "calculations": [
+    {
+      "trace": {
+        "engine": "decimal-28-half-even-v1",
+        "recipe": "growth-v1",
+        "ticker": "TEST",
+        "bindings": {
+          "revenue": [
+            "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00"
+          ],
+          "prior_revenue": [
+            "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619"
+          ]
+        },
+        "scenario": null,
+        "valuation_date": null,
+        "steps": [
+          {
+            "node": "revenue",
+            "operation": "observation",
+            "inputs": [],
+            "value": "100",
+            "unit": "USD",
+            "observation_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+            "note": null
+          },
+          {
+            "node": "prior_revenue",
+            "operation": "observation",
+            "inputs": [],
+            "value": "100",
+            "unit": "USD",
+            "observation_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+            "note": null
+          },
+          {
+            "node": "one",
+            "operation": "constant",
+            "inputs": [],
+            "value": "1",
+            "unit": "ratio",
+            "observation_id": null,
+            "note": null
+          },
+          {
+            "node": "revenue_factor",
+            "operation": "divide",
+            "inputs": [
+              "revenue",
+              "prior_revenue"
+            ],
+            "value": "1",
+            "unit": "ratio",
+            "observation_id": null,
+            "note": null
+          },
+          {
+            "node": "revenue_growth",
+            "operation": "subtract",
+            "inputs": [
+              "revenue_factor",
+              "one"
+            ],
+            "value": "0",
+            "unit": "ratio",
+            "observation_id": null,
+            "note": null
+          }
+        ],
+        "outputs": {
+          "revenue_growth": "revenue_growth"
+        },
+        "currency": "USD",
+        "warnings": [],
+        "calculation_id": "509c3c95e90b310e4eecc87ad5a969ad5e2c4b1bc3002e9cf167ab91ddc43eaf"
+      },
+      "sources": [
+        {
+          "observation": {
+            "ticker": "TEST",
+            "metric": "revenue",
+            "tag": "revenue",
+            "value": "100",
+            "unit": "USD",
+            "currency": "USD",
+            "period": {
+              "kind": "duration",
+              "start": "2024-01-01",
+              "end": "2024-12-31",
+              "basis": "annual",
+              "fiscal_year": null,
+              "fiscal_period": null,
+              "start_method": "reported",
+              "start_evidence": null
+            },
+            "dimensions": {},
+            "source": {
+              "provider": "sec-api",
+              "url": "https://example.com/TEST",
+              "fetched_at": "2025-03-01T00:00:00Z",
+              "document_url": "https://example.com/TEST/filing",
+              "accession_no": null,
+              "filing_date": "2025-02-01",
+              "accepted_at": null,
+              "locator": "/revenue"
+            },
+            "payload_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+            "reported_decimals": null,
+            "scale": 1,
+            "quality_flags": [],
+            "observation_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00"
+          },
+          "passages": [
+            {
+              "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+              "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+              "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+              "source_url": "https://example.com/TEST",
+              "scope": "provider_record",
+              "start": 1,
+              "end": 59,
+              "text": "\"period\":{\"endDate\":\"2024-12-31\",\"startDate\":\"2024-01-01\"}",
+              "text_hash": "e3999b8154788f92973c2418826cc7118695719cceee92bf9a175a176244896a",
+              "retrieved_at": "2025-03-01T00:00:00Z",
+              "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+            },
+            {
+              "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+              "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+              "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+              "source_url": "https://example.com/TEST",
+              "scope": "provider_record",
+              "start": 60,
+              "end": 75,
+              "text": "\"unitRef\":\"USD\"",
+              "text_hash": "b1d4e76acd0793cff3e8a2ff506f0f0874cf8d1b3b74fd3c93e30164035382b2",
+              "retrieved_at": "2025-03-01T00:00:00Z",
+              "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+            },
+            {
+              "document_id": "3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91",
+              "document_hash": "38459e3d558fb1e82690182f716d2db82445b9eb80b8523d030e58ab76b6319e",
+              "source_id": "50b845218e818fe5596de49fb5efa1cde7f7e084ec939baadc9e25acb56c5a00",
+              "source_url": "https://example.com/TEST",
+              "scope": "provider_record",
+              "start": 76,
+              "end": 89,
+              "text": "\"value\":\"100\"",
+              "text_hash": "fe8a0653d9bce5092a5613d012b00ed27d78199449dd8a4a9e79ab417a3b5797",
+              "retrieved_at": "2025-03-01T00:00:00Z",
+              "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3fcda829ac39483404a106f91ae648256cc49a33b9c14a1a1d51f68b79fa5f91"
+            }
+          ]
+        },
+        {
+          "observation": {
+            "ticker": "TEST",
+            "metric": "revenue",
+            "tag": "revenue",
+            "value": "100",
+            "unit": "USD",
+            "currency": "USD",
+            "period": {
+              "kind": "duration",
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "basis": "annual",
+              "fiscal_year": null,
+              "fiscal_period": null,
+              "start_method": "reported",
+              "start_evidence": null
+            },
+            "dimensions": {},
+            "source": {
+              "provider": "sec-api",
+              "url": "https://example.com/TEST",
+              "fetched_at": "2025-03-01T00:00:00Z",
+              "document_url": "https://example.com/TEST/filing",
+              "accession_no": null,
+              "filing_date": "2025-02-01",
+              "accepted_at": null,
+              "locator": "/revenue"
+            },
+            "payload_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+            "reported_decimals": null,
+            "scale": 1,
+            "quality_flags": [],
+            "observation_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619"
+          },
+          "passages": [
+            {
+              "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+              "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+              "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+              "source_url": "https://example.com/TEST",
+              "scope": "provider_record",
+              "start": 1,
+              "end": 59,
+              "text": "\"period\":{\"endDate\":\"2023-12-31\",\"startDate\":\"2023-01-01\"}",
+              "text_hash": "08f2a13e7c7da283b321eb528ca6c06cbba83128fbadf2e5535eac045358035d",
+              "retrieved_at": "2025-03-01T00:00:00Z",
+              "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+            },
+            {
+              "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+              "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+              "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+              "source_url": "https://example.com/TEST",
+              "scope": "provider_record",
+              "start": 60,
+              "end": 75,
+              "text": "\"unitRef\":\"USD\"",
+              "text_hash": "b1d4e76acd0793cff3e8a2ff506f0f0874cf8d1b3b74fd3c93e30164035382b2",
+              "retrieved_at": "2025-03-01T00:00:00Z",
+              "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+            },
+            {
+              "document_id": "3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457",
+              "document_hash": "2949e3fea224a3b90158b142bad034221db0523cce0d1b883ac9f850c085a42a",
+              "source_id": "ae113a41505487c8973231bbdd1f4386d3ee33566911d82ab2e3016e78afa619",
+              "source_url": "https://example.com/TEST",
+              "scope": "provider_record",
+              "start": 76,
+              "end": 89,
+              "text": "\"value\":\"100\"",
+              "text_hash": "fe8a0653d9bce5092a5613d012b00ed27d78199449dd8a4a9e79ab417a3b5797",
+              "retrieved_at": "2025-03-01T00:00:00Z",
+              "snapshot_url": "/api/v1/historical-analyses/123e4567-e89b-42d3-a456-426614174000/evidence/3add6095530e831fd3fd6ac85343a8706f30b1fed1934f3326ec5fa60428f457"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "missing_data": [
+    {
+      "code": "partial_filing_coverage",
+      "message": "Archive pages were not loaded because the requested page limit was zero.",
+      "accession_no": null,
+      "metric": null
+    },
+    {
+      "code": "unsupported_historical_inputs",
+      "message": "Historical prices, market caps, news and estimates are unavailable in this SEC-only analysis.",
+      "accession_no": null,
+      "metric": null
+    },
+    {
+      "code": "annual_metric_missing",
+      "message": "operating_cash_flow: no verified annual context matching revenue.",
+      "accession_no": null,
+      "metric": "operating_cash_flow"
+    }
+  ],
+  "warnings": [
+    "Fictional TEST fixture for UI validation; not investment research.",
+    "No interim filing was discovered."
+  ]
+}

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import type { CitationData } from "@/lib/api/memo-schema";
+import { evidencePath } from "@/lib/api/evidence-link";
 import { apiBaseUrl } from "@/lib/api/client";
 
 interface CitationProps { id: string; citation?: CitationData; }
@@ -27,7 +28,7 @@ export function Citation({ id, citation }: CitationProps) {
             <p className="font-medium">{passage.scope === "feed_excerpt" ? "Feed excerpt — full article not captured" : passage.scope === "normalized_filing" ? "Captured normalized filing text — not PDF page numbers" : passage.scope === "provider_record" ? "Captured provider JSON record" : "Captured transcript"}</p>
             <blockquote className="whitespace-pre-wrap break-words rounded bg-muted p-3">{passage.text}</blockquote>
             <a href={passage.source_url} target="_blank" rel="noopener noreferrer" className="underline">Open source</a>
-            {passage.snapshot_url?.startsWith("/api/v1/memos/") ? <a href={`${apiBaseUrl}${passage.snapshot_url}`} target="_blank" rel="noopener noreferrer" className="ml-4 underline">Open captured source JSON</a> : null}
+            {evidencePath(passage.snapshot_url) ? <a href={`${apiBaseUrl}${evidencePath(passage.snapshot_url)}`} target="_blank" rel="noopener noreferrer" className="ml-4 underline">Open captured source JSON</a> : null}
             <dl className="break-all text-xs text-muted-foreground">
               <dt>Unicode character offsets (end exclusive)</dt><dd>{passage.start}–{passage.end}</dd>
               <dt>Document version</dt><dd>{passage.document_id}</dd>

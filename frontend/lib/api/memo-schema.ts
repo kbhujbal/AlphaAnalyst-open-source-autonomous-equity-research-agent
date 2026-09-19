@@ -4,7 +4,7 @@ import type { components } from "@/types/api";
 export type CitationData = components["schemas"]["Citation"];
 export type Memo = Required<components["schemas"]["Memo"]>;
 
-const SourcePassageZ = z.object({
+export const SourcePassageZ = z.object({
   document_id: z.string(), document_hash: z.string(), source_id: z.string(), source_url: z.string().url(),
   scope: z.enum(["normalized_filing", "transcript", "feed_excerpt", "provider_record"]),
   start: z.number().int().nonnegative(), end: z.number().int().positive(), text: z.string(), text_hash: z.string(),
@@ -65,7 +65,7 @@ const DCFScenarioZ = z.object({
   fcff_margin: z.string(), projection_years: z.number().int(),
 });
 
-const FilingReconciliationZ = z.object({
+export const FilingReconciliationZ = z.object({
   policy: z.literal("latest-available-overlap-v1"), as_of: z.string(), scope: z.literal("retained-sec-contexts-only"),
   observation_ids: z.array(z.string()), decisions: z.array(z.object({
     context_id: z.string(), ticker: z.string(), metric: z.string(), unit: z.string(), currency: z.string().nullable(),
@@ -95,7 +95,7 @@ const CalculationTraceZ = z.object({
   outputs: z.record(z.string()), warnings: z.array(z.string()).default([]),
 }) satisfies z.ZodType<components["schemas"]["CalculationTrace"]>;
 
-const CalculationRecordZ = z.object({
+export const CalculationRecordZ = z.object({
   trace: CalculationTraceZ,
   sources: z.array(z.object({ observation: FinancialObservationZ, passages: z.array(SourcePassageZ) })),
 }) satisfies z.ZodType<components["schemas"]["CalculationRecord"]>;

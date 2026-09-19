@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 export function Header() {
   return (
     <header className="border-b bg-background print:hidden">
-      <Container className="flex h-14 items-center justify-between">
+      <Container className="flex min-h-14 flex-wrap items-center justify-between gap-2 py-2">
         <Link href="/" className="flex items-center gap-2">
           <span className="text-lg font-semibold tracking-tight">
             AlphaAnalyst
@@ -17,6 +17,9 @@ export function Header() {
         <nav className="flex items-center gap-1">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/">Home</Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/historical">History</Link>
           </Button>
           <Button variant="ghost" size="sm" asChild>
             <Link href="/demo">Demo</Link>

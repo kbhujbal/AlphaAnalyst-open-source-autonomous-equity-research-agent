@@ -3,30 +3,16 @@ import json
 import re
 from datetime import date, datetime, timedelta, timezone
 
-from pydantic import BaseModel, Field
 from src import cache
 from src.clients.edgar import EdgarClient
 from src.diagnostics import public_diagnostic
 from src.fetchers.evidence_store import save_document
 from src.fetchers.filings import _filing_from_recent, _persist_filing
 from src.models.evidence import CapturedDocument
-from src.models.filing import Filing, Source
+from src.models.filing import Source
+from src.models.filing_history import FilingHistoryBatch
 from src.fetchers.financial_normalization import optional_date
 
-
-class FilingHistoryBatch(BaseModel):
-    ticker: str
-    as_of: date
-    requested_start: date | None = None
-    forms: list[str] = Field(default_factory=list)
-    coverage_complete: bool = False
-    archive_pages_available: int = 0
-    archive_pages_loaded: int = 0
-    filings_discovered: int = 0
-    filings: list[Filing] = Field(default_factory=list)
-    manifest_document_ids: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    unresolved_amendments: list[str] = Field(default_factory=list)
 
 
 def _parse_page(ticker, cik, rows, source, start, end, forms):

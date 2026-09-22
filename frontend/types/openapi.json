@@ -89,6 +89,144 @@
         }
       }
     },
+    "/api/v1/historical-analyses": {
+      "post": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Post Historical Analysis",
+        "description": "Analyze SEC financials available by a UTC cutoff. Does not run live research agents.",
+        "operationId": "post_historical_analysis_api_v1_historical_analyses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoricalAnalysisRequest-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalAnalyzeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/historical-analyses/{job_id}": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Historical Analysis",
+        "description": "Read a finished partial/failed financial result, including discovery and data gaps.",
+        "operationId": "get_historical_analysis_api_v1_historical_analyses__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalAnalysisResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/historical-analyses/{job_id}/evidence/{document_id}": {
+      "get": {
+        "tags": [
+          "analysis"
+        ],
+        "summary": "Get Historical Evidence",
+        "operationId": "get_historical_evidence_api_v1_historical_analyses__job_id__evidence__document_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapturedDocument"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/memos/{job_id}": {
       "get": {
         "tags": [
@@ -299,6 +437,7 @@
             "description": "US stock ticker, 1-5 uppercase letters."
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "ticker"
@@ -1071,6 +1210,210 @@
         "type": "object",
         "title": "ExportLinks"
       },
+      "Filing": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "filing_type": {
+            "type": "string",
+            "title": "Filing Type"
+          },
+          "filing_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Filing Date"
+          },
+          "accession_no": {
+            "type": "string",
+            "title": "Accession No"
+          },
+          "raw_url": {
+            "type": "string",
+            "title": "Raw Url"
+          },
+          "primary_document": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Document"
+          },
+          "report_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Date"
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "filing_type",
+          "filing_date",
+          "accession_no",
+          "raw_url",
+          "source"
+        ],
+        "title": "Filing",
+        "description": "A SEC filing with its primary-document URL."
+      },
+      "FilingExtraction": {
+        "properties": {
+          "accession_no": {
+            "type": "string",
+            "title": "Accession No"
+          },
+          "filing_type": {
+            "type": "string",
+            "title": "Filing Type"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "extracted",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "observation_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Observation Count"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accession_no",
+          "filing_type",
+          "status",
+          "observation_count"
+        ],
+        "title": "FilingExtraction"
+      },
+      "FilingHistoryBatch": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "requested_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Start"
+          },
+          "forms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Forms"
+          },
+          "coverage_complete": {
+            "type": "boolean",
+            "title": "Coverage Complete",
+            "default": false
+          },
+          "archive_pages_available": {
+            "type": "integer",
+            "title": "Archive Pages Available",
+            "default": 0
+          },
+          "archive_pages_loaded": {
+            "type": "integer",
+            "title": "Archive Pages Loaded",
+            "default": 0
+          },
+          "filings_discovered": {
+            "type": "integer",
+            "title": "Filings Discovered",
+            "default": 0
+          },
+          "filings": {
+            "items": {
+              "$ref": "#/components/schemas/Filing"
+            },
+            "type": "array",
+            "title": "Filings"
+          },
+          "manifest_document_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Manifest Document Ids"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "unresolved_amendments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unresolved Amendments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "as_of"
+        ],
+        "title": "FilingHistoryBatch"
+      },
       "FilingReconciliation": {
         "properties": {
           "policy": {
@@ -1308,6 +1651,313 @@
         ],
         "title": "HealthResponse"
       },
+      "HistoricalAnalysisRequest-Input": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "pattern": "^[A-Z]{1,5}$",
+            "title": "Ticker"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of",
+            "description": "UTC end-of-day availability cutoff; YYYY-MM-DD, not an intraday timestamp."
+          },
+          "lookback_days": {
+            "type": "integer",
+            "maximum": 14610.0,
+            "minimum": 1.0,
+            "title": "Lookback Days",
+            "default": 2192
+          },
+          "max_filings": {
+            "type": "integer",
+            "maximum": 400.0,
+            "minimum": 1.0,
+            "title": "Max Filings",
+            "default": 96
+          },
+          "max_archive_files": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Max Archive Files",
+            "default": 10
+          },
+          "refresh": {
+            "type": "boolean",
+            "title": "Refresh",
+            "default": false
+          },
+          "dcf_scenario": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DCFScenario-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ticker",
+          "as_of"
+        ],
+        "title": "HistoricalAnalysisRequest"
+      },
+      "HistoricalAnalysisRequest-Output": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "pattern": "^[A-Z]{1,5}$",
+            "title": "Ticker"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of",
+            "description": "UTC end-of-day availability cutoff; YYYY-MM-DD, not an intraday timestamp."
+          },
+          "lookback_days": {
+            "type": "integer",
+            "maximum": 14610.0,
+            "minimum": 1.0,
+            "title": "Lookback Days",
+            "default": 2192
+          },
+          "max_filings": {
+            "type": "integer",
+            "maximum": 400.0,
+            "minimum": 1.0,
+            "title": "Max Filings",
+            "default": 96
+          },
+          "max_archive_files": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Max Archive Files",
+            "default": 10
+          },
+          "refresh": {
+            "type": "boolean",
+            "title": "Refresh",
+            "default": false
+          },
+          "dcf_scenario": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DCFScenario-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ticker",
+          "as_of"
+        ],
+        "title": "HistoricalAnalysisRequest"
+      },
+      "HistoricalAnalysisResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "analysis_kind": {
+            "type": "string",
+            "const": "historical-financials",
+            "title": "Analysis Kind",
+            "default": "historical-financials"
+          },
+          "scope": {
+            "type": "string",
+            "const": "sec-filing-financials-only",
+            "title": "Scope",
+            "default": "sec-filing-financials-only"
+          },
+          "cutoff_policy": {
+            "type": "string",
+            "const": "utc-end-of-day-filing-availability-v1",
+            "title": "Cutoff Policy",
+            "default": "utc-end-of-day-filing-availability-v1"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "partial",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "request": {
+            "$ref": "#/components/schemas/HistoricalAnalysisRequest-Output"
+          },
+          "filing_coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilingHistoryBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extractions": {
+            "items": {
+              "$ref": "#/components/schemas/FilingExtraction"
+            },
+            "type": "array",
+            "title": "Extractions"
+          },
+          "financial_coverage_complete": {
+            "type": "boolean",
+            "title": "Financial Coverage Complete",
+            "description": "Coverage of supported SEC financial contexts and calculations only; not complete research or historical investability.",
+            "default": false
+          },
+          "reconciliation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilingReconciliation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "financial_facts": {
+            "items": {
+              "$ref": "#/components/schemas/CalculationSource"
+            },
+            "type": "array",
+            "title": "Financial Facts"
+          },
+          "retained_sources": {
+            "items": {
+              "$ref": "#/components/schemas/CalculationSource"
+            },
+            "type": "array",
+            "title": "Retained Sources"
+          },
+          "latest_filing_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Filing Date"
+          },
+          "latest_financial_period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Financial Period End"
+          },
+          "calculations": {
+            "items": {
+              "$ref": "#/components/schemas/CalculationRecord"
+            },
+            "type": "array",
+            "title": "Calculations"
+          },
+          "missing_data": {
+            "items": {
+              "$ref": "#/components/schemas/MissingData"
+            },
+            "type": "array",
+            "title": "Missing Data"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "ticker",
+          "as_of",
+          "generated_at",
+          "status",
+          "request"
+        ],
+        "title": "HistoricalAnalysisResponse"
+      },
+      "HistoricalAnalyzeResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "const": "queued",
+            "title": "Status",
+            "default": "queued"
+          },
+          "analysis_kind": {
+            "type": "string",
+            "const": "historical-financials",
+            "title": "Analysis Kind",
+            "default": "historical-financials"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "result_url": {
+            "type": "string",
+            "title": "Result Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "as_of",
+          "result_url"
+        ],
+        "title": "HistoricalAnalyzeResponse"
+      },
       "JobStatus": {
         "properties": {
           "job_id": {
@@ -1332,6 +1982,41 @@
             "maximum": 100.0,
             "minimum": 0.0,
             "title": "Progress Pct"
+          },
+          "analysis_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "historical-financials"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Kind"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "result_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Url"
           },
           "current_step": {
             "anyOf": [
@@ -1571,6 +2256,46 @@
           "status"
         ],
         "title": "MemoResponse"
+      },
+      "MissingData": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "accession_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accession No"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "MissingData"
       },
       "NumericalCheck": {
         "properties": {
@@ -1822,6 +2547,30 @@
           "passed"
         ],
         "title": "RevisionOverlapCheck"
+      },
+      "Source": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "url",
+          "fetched_at"
+        ],
+        "title": "Source"
       },
       "SourcePassage": {
         "properties": {

@@ -24,7 +24,8 @@ from src.api.schemas import (
     JobStatus,
     MemoResponse,
 )
-from src.orchestrator import pipeline
+from src.orchestrator import pipeline, historical
+from src.models.historical import HistoricalAnalysisRequest, HistoricalAnalysisResponse, HistoricalAnalyzeResponse
 from src.orchestrator.pipeline import _job_dir
 from src.settings import settings
 
@@ -123,7 +124,58 @@ async def get_job(job_id: UUID) -> JobStatus:
         current_step=state.get("current_step"),
         error=state.get("error"),
         warnings=state.get("errors", []),
+        analysis_kind=state.get("analysis_kind"),
+        as_of=state.get("as_of"),
+        result_url=state.get("result_url"),
     )
+
+
+# ---- historical financial analyses --------------------------------------
+
+
+@router.post("/historical-analyses", response_model=HistoricalAnalyzeResponse,
+    status_code=status.HTTP_202_ACCEPTED, tags=["analysis"])
+async def post_historical_analysis(req: HistoricalAnalysisRequest, background: BackgroundTasks) -> HistoricalAnalyzeResponse:
+    """Analyze SEC financials available by a UTC cutoff. Does not run live research agents."""
+    missing = settings.historical_configuration_errors()
+    if missing:
+        raise HTTPException(status_code=503, detail="Historical analysis is not configured. Set: " + ", ".join(missing))
+    job_id = uuid4()
+    result_url = f"/api/v1/historical-analyses/{job_id}"
+    await cache.set_json(JOB_KEY.format(job_id=job_id), dict(job_id=str(job_id), status="queued",
+        analysis_kind="historical-financials", as_of=req.as_of.isoformat(), result_url=result_url,
+        request=req.model_dump(mode="json"), progress_pct=0, current_step=None), ttl=historical.TTL)
+    background.add_task(historical.run_historical_analysis, req, str(job_id))
+    return HistoricalAnalyzeResponse(job_id=job_id, as_of=req.as_of, result_url=result_url)
+
+
+@router.get("/historical-analyses/{job_id}", response_model=HistoricalAnalysisResponse, tags=["analysis"])
+async def get_historical_analysis(job_id: UUID) -> HistoricalAnalysisResponse:
+    """Read a finished partial/failed financial result, including discovery and data gaps."""
+    data = await cache.get_json(historical.RESULT_KEY.format(job_id=job_id))
+    if data is None:
+        raise HTTPException(status_code=404, detail="historical result not ready or expired; poll /jobs/{job_id}")
+    result = HistoricalAnalysisResponse.model_validate(data)
+    if result.job_id != job_id:
+        raise HTTPException(status_code=404, detail="historical result not found")
+    for source in result.financial_facts + result.retained_sources + [s for record in result.calculations for s in record.sources]:
+        for passage in source.passages:
+            passage.snapshot_url = f"/api/v1/historical-analyses/{job_id}/evidence/{passage.document_id}"
+    return result
+
+
+@router.get("/historical-analyses/{job_id}/evidence/{document_id}", response_model=CapturedDocument, tags=["analysis"])
+async def get_historical_evidence(job_id: UUID, document_id: str) -> CapturedDocument:
+    result = await get_historical_analysis(job_id)
+    allowed = set(result.filing_coverage.manifest_document_ids if result.filing_coverage else [])
+    allowed.update(p.document_id for source in result.retained_sources + result.financial_facts
+        + [s for record in result.calculations for s in record.sources] for p in source.passages)
+    if document_id not in allowed:
+        raise HTTPException(status_code=404, detail="evidence not found")
+    document = (await load_documents({document_id})).get(document_id)
+    if document is None or document.ticker != result.ticker:
+        raise HTTPException(status_code=404, detail="evidence not found")
+    return document
 
 
 # ---- memos --------------------------------------------------------------

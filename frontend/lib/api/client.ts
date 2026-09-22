@@ -47,3 +47,19 @@ export async function getMemo(jobId: string): Promise<MemoResponse> {
   });
   return unwrap(data, error, response);
 }
+
+
+export type HistoricalAnalysisRequest = components["schemas"]["HistoricalAnalysisRequest-Input"];
+export type HistoricalAnalysisResponse = components["schemas"]["HistoricalAnalysisResponse"];
+
+export async function startHistoricalAnalysis(body: HistoricalAnalysisRequest) {
+  const { data, error, response } = await client.POST("/api/v1/historical-analyses", { body });
+  return unwrap(data, error, response);
+}
+
+export async function getHistoricalAnalysis(jobId: string): Promise<HistoricalAnalysisResponse> {
+  const { data, error, response } = await client.GET("/api/v1/historical-analyses/{job_id}", {
+    params: { path: { job_id: jobId } },
+  });
+  return unwrap(data, error, response);
+}

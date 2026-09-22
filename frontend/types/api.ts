@@ -38,6 +38,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/historical-analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Historical Analysis
+         * @description Analyze SEC financials available by a UTC cutoff. Does not run live research agents.
+         */
+        post: operations["post_historical_analysis_api_v1_historical_analyses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/historical-analyses/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Historical Analysis
+         * @description Read a finished partial/failed financial result, including discovery and data gaps.
+         */
+        get: operations["get_historical_analysis_api_v1_historical_analyses__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/historical-analyses/{job_id}/evidence/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Historical Evidence */
+        get: operations["get_historical_evidence_api_v1_historical_analyses__job_id__evidence__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/memos/{job_id}": {
         parameters: {
             query?: never;
@@ -391,6 +448,90 @@ export interface components {
             /** Excel */
             excel?: string | null;
         };
+        /**
+         * Filing
+         * @description A SEC filing with its primary-document URL.
+         */
+        Filing: {
+            /** Ticker */
+            ticker: string;
+            /** Filing Type */
+            filing_type: string;
+            /**
+             * Filing Date
+             * Format: date
+             */
+            filing_date: string;
+            /** Accession No */
+            accession_no: string;
+            /** Raw Url */
+            raw_url: string;
+            /** Primary Document */
+            primary_document?: string | null;
+            /** Report Date */
+            report_date?: string | null;
+            /** Accepted At */
+            accepted_at?: string | null;
+            source: components["schemas"]["Source"];
+        };
+        /** FilingExtraction */
+        FilingExtraction: {
+            /** Accession No */
+            accession_no: string;
+            /** Filing Type */
+            filing_type: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "extracted" | "failed";
+            /** Observation Count */
+            observation_count: number;
+            /** Error */
+            error?: string | null;
+        };
+        /** FilingHistoryBatch */
+        FilingHistoryBatch: {
+            /** Ticker */
+            ticker: string;
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Requested Start */
+            requested_start?: string | null;
+            /** Forms */
+            forms?: string[];
+            /**
+             * Coverage Complete
+             * @default false
+             */
+            coverage_complete: boolean;
+            /**
+             * Archive Pages Available
+             * @default 0
+             */
+            archive_pages_available: number;
+            /**
+             * Archive Pages Loaded
+             * @default 0
+             */
+            archive_pages_loaded: number;
+            /**
+             * Filings Discovered
+             * @default 0
+             */
+            filings_discovered: number;
+            /** Filings */
+            filings?: components["schemas"]["Filing"][];
+            /** Manifest Document Ids */
+            manifest_document_ids?: string[];
+            /** Warnings */
+            warnings?: string[];
+            /** Unresolved Amendments */
+            unresolved_amendments?: string[];
+        };
         /** FilingReconciliation */
         FilingReconciliation: {
             /**
@@ -486,6 +627,165 @@ export interface components {
             /** Redis Ok */
             redis_ok: boolean;
         };
+        /** HistoricalAnalysisRequest */
+        "HistoricalAnalysisRequest-Input": {
+            /** Ticker */
+            ticker: string;
+            /**
+             * As Of
+             * Format: date
+             * @description UTC end-of-day availability cutoff; YYYY-MM-DD, not an intraday timestamp.
+             */
+            as_of: string;
+            /**
+             * Lookback Days
+             * @default 2192
+             */
+            lookback_days: number;
+            /**
+             * Max Filings
+             * @default 96
+             */
+            max_filings: number;
+            /**
+             * Max Archive Files
+             * @default 10
+             */
+            max_archive_files: number;
+            /**
+             * Refresh
+             * @default false
+             */
+            refresh: boolean;
+            dcf_scenario?: components["schemas"]["DCFScenario-Input"] | null;
+        };
+        /** HistoricalAnalysisRequest */
+        "HistoricalAnalysisRequest-Output": {
+            /** Ticker */
+            ticker: string;
+            /**
+             * As Of
+             * Format: date
+             * @description UTC end-of-day availability cutoff; YYYY-MM-DD, not an intraday timestamp.
+             */
+            as_of: string;
+            /**
+             * Lookback Days
+             * @default 2192
+             */
+            lookback_days: number;
+            /**
+             * Max Filings
+             * @default 96
+             */
+            max_filings: number;
+            /**
+             * Max Archive Files
+             * @default 10
+             */
+            max_archive_files: number;
+            /**
+             * Refresh
+             * @default false
+             */
+            refresh: boolean;
+            dcf_scenario?: components["schemas"]["DCFScenario-Output"] | null;
+        };
+        /** HistoricalAnalysisResponse */
+        HistoricalAnalysisResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Ticker */
+            ticker: string;
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Analysis Kind
+             * @default historical-financials
+             * @constant
+             */
+            analysis_kind: "historical-financials";
+            /**
+             * Scope
+             * @default sec-filing-financials-only
+             * @constant
+             */
+            scope: "sec-filing-financials-only";
+            /**
+             * Cutoff Policy
+             * @default utc-end-of-day-filing-availability-v1
+             * @constant
+             */
+            cutoff_policy: "utc-end-of-day-filing-availability-v1";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "partial" | "failed";
+            request: components["schemas"]["HistoricalAnalysisRequest-Output"];
+            filing_coverage?: components["schemas"]["FilingHistoryBatch"] | null;
+            /** Extractions */
+            extractions?: components["schemas"]["FilingExtraction"][];
+            /**
+             * Financial Coverage Complete
+             * @description Coverage of supported SEC financial contexts and calculations only; not complete research or historical investability.
+             * @default false
+             */
+            financial_coverage_complete: boolean;
+            reconciliation?: components["schemas"]["FilingReconciliation"] | null;
+            /** Financial Facts */
+            financial_facts?: components["schemas"]["CalculationSource"][];
+            /** Retained Sources */
+            retained_sources?: components["schemas"]["CalculationSource"][];
+            /** Latest Filing Date */
+            latest_filing_date?: string | null;
+            /** Latest Financial Period End */
+            latest_financial_period_end?: string | null;
+            /** Calculations */
+            calculations?: components["schemas"]["CalculationRecord"][];
+            /** Missing Data */
+            missing_data?: components["schemas"]["MissingData"][];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** HistoricalAnalyzeResponse */
+        HistoricalAnalyzeResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Status
+             * @default queued
+             * @constant
+             */
+            status: "queued";
+            /**
+             * Analysis Kind
+             * @default historical-financials
+             * @constant
+             */
+            analysis_kind: "historical-financials";
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Result Url */
+            result_url: string;
+        };
         /** JobStatus */
         JobStatus: {
             /**
@@ -500,6 +800,12 @@ export interface components {
             status: "queued" | "running" | "complete" | "partial" | "failed" | "error";
             /** Progress Pct */
             progress_pct: number;
+            /** Analysis Kind */
+            analysis_kind?: "historical-financials" | null;
+            /** As Of */
+            as_of?: string | null;
+            /** Result Url */
+            result_url?: string | null;
             /** Current Step */
             current_step?: string | null;
             /** Error */
@@ -590,6 +896,17 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** MissingData */
+        MissingData: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Accession No */
+            accession_no?: string | null;
+            /** Metric */
+            metric?: string | null;
+        };
         /** NumericalCheck */
         NumericalCheck: {
             /** Field */
@@ -664,6 +981,18 @@ export interface components {
             reported_value: string;
             /** Passed */
             passed: boolean;
+        };
+        /** Source */
+        Source: {
+            /** Provider */
+            provider: string;
+            /** Url */
+            url: string;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
         };
         /** SourcePassage */
         SourcePassage: {
@@ -769,6 +1098,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_historical_analysis_api_v1_historical_analyses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoricalAnalysisRequest-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoricalAnalyzeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_historical_analysis_api_v1_historical_analyses__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoricalAnalysisResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_historical_evidence_api_v1_historical_analyses__job_id__evidence__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapturedDocument"];
                 };
             };
             /** @description Validation Error */

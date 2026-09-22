@@ -218,7 +218,7 @@ debt, cash and share observations plus explicit scenario assumptions.
 
 Still pending: applying/testing migrations on a live PostgreSQL instance; provider
 account smoke tests; a larger independently reviewed company corpus; full XBRL
-context/taxonomy coverage; a security master; historical/as-of query APIs; raw HTTP
+context/taxonomy coverage; a security master; full historical memo APIs; raw HTTP
 archives; broader accounting/restatement reconciliation workflows; verified quote metadata;
 and a financially reviewed valuation methodology. The existing price, macro, and
 estimates pipelines have not been converted into this financial-statement model.
@@ -773,7 +773,7 @@ source/audit tampering, reported snapshot updates, publication, offline replay,
 frontend contracts and database round-trip retention of original/revised versions.
 
 Pending: live SEC/sec-api/FMP account validation and current PostgreSQL integration
-checks; on-demand backfill beyond configured budgets and public historical/as-of analysis APIs;
+checks; on-demand backfill beyond configured budgets and full historical research memo APIs;
 financial-expert examples and review of non-reliance notices, amendment purpose,
 custom taxonomies, reclassifications and accounting-policy changes; an explicit
 analyst reconciliation/approval workflow for blocked cross-filing aggregates;
@@ -790,3 +790,100 @@ and original/amended annual growth calculations with exact source-linked replay.
 Historical filing ingestion alone does not make full reports point-in-time:
 market prices, issuer identities, news and vendor snapshots still need historical
 availability coverage. A cutoff is a UTC date (end-of-day), not an intraday timestamp.
+
+## Historical financial analysis API
+
+`POST /api/v1/historical-analyses` submits SEC financial analysis at an explicit
+UTC end-of-day cutoff. It uses historical 10-K/10-Q originals and amendments;
+it does not invoke the live memo pipeline, agents, vector search, current vendor
+fundamentals or the company-wide observation archive. No current prices, news or
+estimates are substituted. This endpoint produces financial facts and replayable
+calculations, not a full historical investment memo.
+
+Example request:
+
+```json
+{
+  "ticker": "AAPL",
+  "as_of": "2024-06-30",
+  "lookback_days": 2192,
+  "max_filings": 96,
+  "max_archive_files": 10,
+  "refresh": false
+}
+```
+
+The `202` response includes `job_id`, `as_of`, `analysis_kind` and `result_url`.
+Poll `GET /api/v1/jobs/{job_id}` for progress; historical jobs expose their cutoff
+and result URL. Read `GET /api/v1/historical-analyses/{job_id}` when terminal.
+Results remain readable when their analysis status is `failed`, so callers can
+inspect coverage and failure reasons. Pending, unknown or expired results return
+`404`; the shared jobs endpoint distinguishes pending from unknown jobs.
+Historical jobs do not expose a live memo or live exports through `/memos`.
+
+The result contains:
+
+- `filing_coverage`: requested filing-date interval/form set, discovered filings,
+  manifest document IDs, advertised/loaded archive-page counts, discovered/returned
+  filing counts, unresolved amendments and discovery warnings. A complete discovery
+  does not certify successful extraction, continuous financial periods or full SEC
+  accounting coverage.
+- `extractions`: per-accession extraction status, observation count and failure
+  reason. `retained_sources` contains the eligible verified versions, including
+  superseded facts; `financial_facts` contains selected unambiguous contexts.
+- `reconciliation`: exact-context availability/version selection at the requested
+  cutoff. `calculations` contains independently source-verified recipe records with
+  all required original/superseded observations, exact passages and replay traces.
+  Only the discovered filing universe feeds these outputs. Observation and accepted
+  filing dates are checked again before calculation. Unresolved amendments or failed
+  source verification withhold financial outputs instead of falling back to older
+  sources. A normal extraction failure remains visible as incomplete coverage.
+- `missing_data`: structured `code`, `message`, optional `accession_no` and `metric`.
+  Codes identify discovery/ingestion/extraction failures, partial filing coverage,
+  missing annual/interim filings, unsupported observations, unresolved amendments,
+  source/calculation verification failures, ambiguous contexts, missing annual
+  revenue or matching income/cash-flow contexts, stale annual data, unavailable
+  calculations and unsupported historical research inputs. Annual data is flagged
+  stale when its latest verified revenue period ended over 550 days before cutoff;
+  the exact filing and financial-period dates are also returned.
+- `financial_coverage_complete`: scoped to discovery, extraction, supported annual
+  financial contexts and growth/margin/TTM calculation coverage. An omitted DCF
+  scenario does not alone make this flag false. It never certifies a complete
+  investment-research dataset. Overall status is always `partial` or `failed`
+  because full historical research inputs are not implemented.
+
+Optional `dcf_scenario` has the same explicit assumptions contract as live analysis.
+DCF remains unavailable when required source-linked debt, cash, shares or revenue
+history are missing. Caller-supplied assumptions are labeled as supplied now, not
+proven available at the cutoff. Market-cap comparables are not fetched in this mode.
+
+Source passages link to
+`GET /api/v1/historical-analyses/{job_id}/evidence/{document_id}`. Only source
+snapshots and discovery manifests referenced by that result and belonging to its
+company can be downloaded; unrelated documents return `404`. Raw discovery
+manifests are captured today and can list filings after the cutoff; those filings
+are excluded from the analysis inputs. The snapshot is evidence of the discovery
+response, not a historical-time snapshot of the SEC service.
+
+Cutoffs must be `YYYY-MM-DD` between the operational lower bound `1994-01-01` and
+today (UTC); timestamps, future cutoffs, unknown fields and out-of-range retrieval
+budgets return `422`. Filing availability is date-based, not intraday. The live
+`POST /analyze` now rejects unknown fields, including `as_of`, so an accidental
+historical request cannot silently run live analysis. Use the separate endpoint.
+
+Historical analysis requires PostgreSQL, Redis, `SEC_API_KEY` and a real SEC contact
+`EDGAR_USER_AGENT`; LLM, embedding and FMP credentials are not required. Existing
+migrations through `0005` suffice. No dependency or migration was added. OpenAPI,
+generated TypeScript contracts and `startHistoricalAnalysis`/`getHistoricalAnalysis`
+client helpers cover the endpoints; an interactive historical-analysis screen is
+not implemented.
+
+Operational limits remain: jobs run through FastAPI `BackgroundTasks`; job/results
+expire from Redis after 24 hours, while verified source and calculation records
+remain in PostgreSQL. Durable historical job/result storage, restart-safe worker
+queues, cancellation, access controls, resumable backfill and ingestion monitoring
+remain pending. Current ticker-to-CIK mapping and data retrieved today do not prove
+historical issuer identity or contemporaneous vendor availability. Historical
+prices/currencies/share classes, news, estimates, transcripts, macro inputs and
+full historical memo generation remain pending, along with live SEC/sec-api and
+PostgreSQL deployment validation.

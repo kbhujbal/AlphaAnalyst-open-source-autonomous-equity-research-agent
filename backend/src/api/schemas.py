@@ -7,12 +7,12 @@ must regenerate before upgrading.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.agents.synthesizer import Memo
 from src.models.financial import FinancialObservation
@@ -20,6 +20,7 @@ from src.models.calculation import DCFScenario
 
 
 class AnalyzeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     dcf_scenario: DCFScenario | None = None
     ticker: str = Field(
         pattern=r"^[A-Z]{1,5}$",
@@ -36,6 +37,9 @@ class JobStatus(BaseModel):
     job_id: UUID
     status: Literal["queued", "running", "complete", "partial", "failed", "error"]
     progress_pct: int = Field(ge=0, le=100)
+    analysis_kind: Literal["historical-financials"] | None = None
+    as_of: date | None = None
+    result_url: str | None = None
     current_step: str | None = None
     error: str | None = None
     warnings: list[str] = Field(default_factory=list)

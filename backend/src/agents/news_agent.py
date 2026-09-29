@@ -12,6 +12,8 @@ from src.agents.base import Agent, AgentOutput
 from src.fetchers.news import fetch_news
 from src.models.finding import Citation, Finding
 from src.models.news import NewsArticle
+from src.models.evidence import CapturedDocument, passage_at
+from src.fetchers.evidence_store import save_document
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +247,20 @@ class NewsAgent(Agent):
         if summary is not None:
             output.findings.append(summary)
 
+        for article, _ in ranked[:5]:
+            text = article.headline + ("\n\n" + article.raw_text if article.raw_text else "")
+            document = CapturedDocument(ticker=ticker, source_id=f"{article.provider}:{article.url}", source_url=article.url,
+                                        scope="feed_excerpt", text=text, retrieved_at=article.source_obj.fetched_at)
+            try:
+                document = await save_document(document)
+            except Exception as exc:
+                output.errors.append(f"News excerpt capture failed: {exc}")
+                continue
+            for finding in output.findings:
+                for citation in finding.evidence:
+                    if citation.source_id == article.url:
+                        citation.passages = [passage_at(document, 0, min(len(text), 4000))]
+                        citation.snippet = citation.passages[0].text
         return output
 
 

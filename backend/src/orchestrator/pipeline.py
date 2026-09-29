@@ -28,6 +28,7 @@ from src.agents.news_agent import NewsAgent
 from src.agents.synthesizer import Memo, Synthesizer, SynthesizerInput, _SECTION_FIELDS
 from src import cache
 from src.diagnostics import public_diagnostic
+from src.report_integrity import memo_integrity_errors
 from src.fetchers.estimates import fetch_estimates
 from src.fetchers.filings import (
     extract_facts,
@@ -315,8 +316,9 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
     # --- Step 2: indexing -------------------------------------------------
     await _set_progress(job_id, status="running", current_step="indexing")
     index_coros = []
-    if ten_k is not None:
-        index_coros.append(index_filing(ten_k))
+    for filing in [ten_k, ten_q, *eight_ks]:
+        if filing is not None:
+            index_coros.append(index_filing(filing))
     for t in transcripts:
         index_coros.append(index_transcript(t))
     if index_coros:
@@ -417,11 +419,21 @@ async def analyze(ticker: str, *, job_id: str | None = None) -> Memo:
     total_calls += synth.last_run_llm_calls
     _check_budget(total_cost)
 
+    errors.extend(memo.verification_issues)
+    if memo.verification_version != "claim-v1":
+        errors.append("Claim-level audit unavailable; legacy memo is unverified")
+    for claim in memo.claim_audit:
+        if claim.status != "verified":
+            errors.append(f"{claim.claim_id}: {claim.status}: {'; '.join(claim.reasons)}")
+
     missing_sections = _missing_sections(memo)
     if len(missing_sections) == len(_SECTION_FIELDS) or not memo.citations:
         raise InsufficientResearchError(
             "The generated memo has no usable cited research; no memo was published."
         )
+    integrity_errors = memo_integrity_errors(memo)
+    if integrity_errors:
+        raise InsufficientResearchError("Memo claim integrity failed; no memo was published: " + "; ".join(integrity_errors))
     errors.extend(f"Insufficient evidence: {field}" for field in missing_sections)
     errors.extend(
         f"Synthesis validation: {field}: {'; '.join(reasons)}"

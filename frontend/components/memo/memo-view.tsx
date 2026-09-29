@@ -64,13 +64,29 @@ export function MemoView({ response }: MemoViewProps) {
 
         <section className="mb-6 space-y-2 rounded-lg border p-4 text-sm" aria-label="Report quality">
           <p className="font-semibold">{response.status === "partial" ? "Partial report: coverage gaps require review" : "Processing complete: analyst review required"}</p>
-          <p>Research prototype. Valuation is experimental. Citation tags do not establish that each claim is correct.</p>
+          <p>Research prototype. Valuation is experimental. {memo.verification_version === "claim-v1" ? "Quotes match retained text; checked financial statements match source observations. Interpretations require analyst review." : "This legacy report has no claim-level verification audit and is unverified."}</p>
           {(response.warnings ?? []).length > 0 ? (
             <ul className="list-disc space-y-1 pl-5">
               {response.warnings!.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}
             </ul>
           ) : null}
         </section>
+
+        <details className="mb-6 rounded-lg border p-4 text-sm">
+          <summary className="cursor-pointer font-semibold">Claim verification audit</summary>
+          {memo.verification_version !== "claim-v1" ? <p className="mt-2">This legacy report has no claim-level audit and is unverified.</p> : (
+            <div className="mt-3 space-y-4">
+              {memo.claim_audit.map((claim) => (
+                <section key={claim.claim_id} className="border-t pt-3">
+                  <p className="font-medium">{claim.claim_id}: {claim.status === "verified" ? (claim.kind === "quote" ? "Exact quote checked" : "Financial assertion checked") : claim.status === "rejected" ? "Rejected — withheld from report" : "Interpretation — review required"}</p>
+                  <p>{claim.status === "rejected" ? claim.proposed_text || "Structured financial assertion rejected" : claim.rendered_text}</p>
+                  {(claim.reasons ?? []).map((reason, index) => <p className="text-muted-foreground" key={index}>{reason}</p>)}
+                  {(claim.checks ?? []).map((check) => <p className="text-xs" key={check.field}>{check.field}: {check.passed ? "match" : "mismatch"}; claimed {check.claimed ?? "unknown"}; source {check.expected ?? "unknown"}</p>)}
+                </section>
+              ))}
+            </div>
+          )}
+        </details>
 
         <Tabs defaultValue="summary">
           <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">

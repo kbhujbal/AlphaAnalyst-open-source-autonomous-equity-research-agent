@@ -204,6 +204,58 @@
         }
       }
     },
+    "/api/v1/memos/{job_id}/evidence/{document_id}": {
+      "get": {
+        "tags": [
+          "memos"
+        ],
+        "summary": "Get Evidence Snapshot",
+        "operationId": "get_evidence_snapshot_api_v1_memos__job_id__evidence__document_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapturedDocument"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -288,6 +340,64 @@
         ],
         "title": "BoundaryEvidence"
       },
+      "CapturedDocument": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "source_url": {
+            "type": "string",
+            "title": "Source Url"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "normalized_filing",
+              "transcript",
+              "feed_excerpt",
+              "provider_record"
+            ],
+            "title": "Scope"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Retrieved At"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "readOnly": true
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "source_id",
+          "source_url",
+          "scope",
+          "text",
+          "retrieved_at",
+          "content_hash",
+          "document_id"
+        ],
+        "title": "CapturedDocument"
+      },
       "Citation": {
         "properties": {
           "tag": {
@@ -322,6 +432,24 @@
           "snippet": {
             "type": "string",
             "title": "Snippet"
+          },
+          "passages": {
+            "items": {
+              "$ref": "#/components/schemas/SourcePassage"
+            },
+            "type": "array",
+            "title": "Passages"
+          },
+          "observation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Id"
           }
         },
         "type": "object",
@@ -331,6 +459,104 @@
           "snippet"
         ],
         "title": "Citation"
+      },
+      "ClaimAudit": {
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "title": "Claim Id"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "executive_summary",
+              "financial_snapshot",
+              "recent_catalysts",
+              "valuation",
+              "earnings_call_tone_shift",
+              "alt_data_signals",
+              "bull_case",
+              "bear_case",
+              "risks"
+            ],
+            "title": "Section"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "quote",
+              "financial",
+              "interpretation"
+            ],
+            "title": "Kind"
+          },
+          "proposed_text": {
+            "type": "string",
+            "title": "Proposed Text"
+          },
+          "rendered_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rendered Text"
+          },
+          "citations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "needs_review",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "observation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Id"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/NumericalCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          }
+        },
+        "type": "object",
+        "required": [
+          "claim_id",
+          "section",
+          "kind",
+          "proposed_text",
+          "citations",
+          "status"
+        ],
+        "title": "ClaimAudit"
       },
       "ExportLinks": {
         "properties": {
@@ -617,6 +843,32 @@
             },
             "type": "array",
             "title": "Citations"
+          },
+          "claim_audit": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimAudit"
+            },
+            "type": "array",
+            "title": "Claim Audit"
+          },
+          "verification_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "claim-v1"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Version"
+          },
+          "verification_issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Verification Issues"
           }
         },
         "type": "object",
@@ -694,6 +946,48 @@
           "status"
         ],
         "title": "MemoResponse"
+      },
+      "NumericalCheck": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "claimed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "claimed",
+          "expected",
+          "passed"
+        ],
+        "title": "NumericalCheck"
       },
       "ObservationSource": {
         "properties": {
@@ -865,6 +1159,88 @@
           "kind"
         ],
         "title": "ReportingPeriod"
+      },
+      "SourcePassage": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Document Id"
+          },
+          "document_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Document Hash"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "source_url": {
+            "type": "string",
+            "title": "Source Url"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "normalized_filing",
+              "transcript",
+              "feed_excerpt",
+              "provider_record"
+            ],
+            "title": "Scope"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "End"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "text_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Text Hash"
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Retrieved At"
+          },
+          "snapshot_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "document_hash",
+          "source_id",
+          "source_url",
+          "scope",
+          "start",
+          "end",
+          "text",
+          "text_hash",
+          "retrieved_at"
+        ],
+        "title": "SourcePassage"
       },
       "ValidationError": {
         "properties": {

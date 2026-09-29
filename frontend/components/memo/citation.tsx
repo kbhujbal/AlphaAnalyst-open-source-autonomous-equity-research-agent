@@ -3,52 +3,42 @@
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import type { CitationData } from "@/lib/api/memo-schema";
+import { apiBaseUrl } from "@/lib/api/client";
 
-interface CitationProps {
-  id: string;
-  citation?: CitationData;
-}
+interface CitationProps { id: string; citation?: CitationData; }
 
 export function Citation({ id, citation }: CitationProps) {
-  const label = citation
-    ? `[${citation.source_type}] ${citation.source_id}`
-    : `${id}: source mapping unavailable`;
-  const trigger = (
-    <a
-      href={`#cite-${id}`}
-      className="ml-0.5 inline-flex align-super"
-      aria-label={`Source ${id}`}
-    >
-      <Badge
-        variant="secondary"
-        className="h-4 px-1.5 text-[10px] font-medium leading-none"
-      >
-        {id}
-      </Badge>
-    </a>
-  );
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-        <TooltipContent className="max-w-sm text-xs">
-          <p className="font-medium">{label}</p>
-          {citation?.snippet ? (
-            <p className="mt-1 text-muted-foreground">
-              {citation.snippet.slice(0, 200)}
-              {citation.snippet.length > 200 ? "…" : ""}
-            </p>
-          ) : null}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Dialog>
+      <DialogTrigger asChild>
+        <button type="button" className="ml-0.5 inline-flex align-super" aria-label={`Inspect source ${id}`}>
+          <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-medium leading-none">{id}</Badge>
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Source {id}</DialogTitle>
+          <DialogDescription>Inspect the captured evidence. Quotes establish what the retained source says; interpretations still require analyst review.</DialogDescription>
+        </DialogHeader>
+        {(citation?.passages ?? []).length ? citation!.passages!.map((passage, index) => (
+          <section key={`${passage.document_id}-${passage.start}-${index}`} className="space-y-2 border-t pt-3 text-sm">
+            <p className="font-medium">{passage.scope === "feed_excerpt" ? "Feed excerpt — full article not captured" : passage.scope === "normalized_filing" ? "Captured normalized filing text — not PDF page numbers" : passage.scope === "provider_record" ? "Captured provider JSON record" : "Captured transcript"}</p>
+            <blockquote className="whitespace-pre-wrap break-words rounded bg-muted p-3">{passage.text}</blockquote>
+            <a href={passage.source_url} target="_blank" rel="noopener noreferrer" className="underline">Open source</a>
+            {passage.snapshot_url?.startsWith("/api/v1/memos/") ? <a href={`${apiBaseUrl}${passage.snapshot_url}`} target="_blank" rel="noopener noreferrer" className="ml-4 underline">Open captured source JSON</a> : null}
+            <dl className="break-all text-xs text-muted-foreground">
+              <dt>Unicode character offsets (end exclusive)</dt><dd>{passage.start}–{passage.end}</dd>
+              <dt>Document version</dt><dd>{passage.document_id}</dd>
+              <dt>Document SHA-256</dt><dd>{passage.document_hash}</dd>
+              <dt>Passage SHA-256</dt><dd>{passage.text_hash}</dd>
+              <dt>Retrieved</dt><dd>{passage.retrieved_at}</dd>
+            </dl>
+          </section>
+        )) : <p>No retained source passage is available. This legacy citation is unverified.</p>}
+      </DialogContent>
+    </Dialog>
   );
 }
 

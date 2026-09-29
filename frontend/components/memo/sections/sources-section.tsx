@@ -1,3 +1,4 @@
+import { Citation } from "../citation";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -62,7 +63,7 @@ export function SourcesSection({ memo, tagMap }: SourcesSectionProps) {
             <TableRow key={`${tag}-${idx}`} id={`cite-${tag}`}>
               <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
               <TableCell>
-                <Badge variant="secondary">{tag}</Badge>
+                <Citation id={tag} citation={citation} />
               </TableCell>
               <TableCell>
                 <Badge className={TYPE_COLOR[citation.source_type]} variant="outline">

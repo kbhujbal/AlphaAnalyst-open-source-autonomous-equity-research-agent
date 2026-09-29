@@ -12,6 +12,8 @@ from fastapi.responses import FileResponse
 
 from src import cache
 from src.diagnostics import public_diagnostic
+from src.fetchers.evidence_store import load_documents
+from src.models.evidence import CapturedDocument
 from src.agents.synthesizer import Memo
 from src.api.schemas import (
     AnalyzeRequest,
@@ -146,6 +148,9 @@ async def get_memo(job_id: UUID) -> MemoResponse:
         raise HTTPException(status_code=404, detail="memo body missing")
 
     memo = Memo.model_validate(memo_payload)
+    for citation in memo.citations:
+        for passage in citation.passages:
+            passage.snapshot_url = f"/api/v1/memos/{job_id}/evidence/{passage.document_id}"
     completed_at_raw = state.get("completed_at")
     generated_at = (
         datetime.fromisoformat(completed_at_raw)
@@ -204,6 +209,22 @@ async def get_memo_excel(job_id: UUID) -> FileResponse:
         ),
         filename=f"{job_id}-model.xlsx",
     )
+
+
+@router.get("/memos/{job_id}/evidence/{document_id}", response_model=CapturedDocument, tags=["memos"])
+async def get_evidence_snapshot(job_id: UUID, document_id: str) -> CapturedDocument:
+    state = await cache.get_json(JOB_KEY.format(job_id=job_id))
+    if not state or state.get("status") not in {"complete", "partial"} or not state.get("memo"):
+        raise HTTPException(status_code=404, detail="evidence not found")
+    memo = Memo.model_validate(state["memo"])
+    allowed = {p.document_id for citation in memo.citations for p in citation.passages}
+    if memo.verification_version != "claim-v1" or document_id not in allowed:
+        raise HTTPException(status_code=404, detail="evidence not found")
+    documents = await load_documents({document_id})
+    document = documents.get(document_id)
+    if document is None or document.ticker != memo.ticker:
+        raise HTTPException(status_code=404, detail="evidence not found")
+    return document
 
 
 # ---- health -------------------------------------------------------------

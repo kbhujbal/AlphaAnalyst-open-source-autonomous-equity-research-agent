@@ -9,6 +9,8 @@ import pytest
 from pydantic import BaseModel
 
 from src.agents.base import AgentOutput
+from src.models.claims import ClaimAudit
+from src.models.evidence import CapturedDocument, passage_at
 from src.agents.synthesizer import Memo
 from src.llm.client import CompletionResult
 from src.models.filing import Filing, Source
@@ -92,10 +94,12 @@ def _agent_output(name: str, claim: str, cost: str = "0.05") -> AgentOutput:
 
 
 def _memo() -> Memo:
+    document = CapturedDocument(ticker="TSLA", source_id="test-source", source_url="https://example.test/filing",
+                                scope="normalized_filing", text="Supported research", retrieved_at=datetime.now(timezone.utc))
     return Memo(
         ticker="TSLA",
         as_of=date(2024, 4, 28),
-        executive_summary="Supported research [F1].",
+        executive_summary="“Supported research” [F1]",
         financial_snapshot="Insufficient evidence",
         recent_catalysts="Insufficient evidence",
         valuation="Insufficient evidence",
@@ -104,7 +108,11 @@ def _memo() -> Memo:
         bull_case="Insufficient evidence",
         bear_case="Insufficient evidence",
         risks="Insufficient evidence",
-        citations=[Citation(tag="F1", source_type="filing", source_id="X", snippet="Supported research")],
+        citations=[Citation(tag="F1", source_type="filing", source_id=document.source_url, snippet=document.text,
+                            passages=[passage_at(document, 0, len(document.text))])],
+        verification_version="claim-v1",
+        claim_audit=[ClaimAudit(claim_id="test-claim", section="executive_summary", kind="quote", proposed_text="Supported research",
+                               rendered_text="“Supported research”", citations=["F1"], status="verified")],
     )
 
 
@@ -386,8 +394,11 @@ async def test_complete_requires_no_known_coverage_gaps(stubbed_pipeline, captur
         self.last_run_llm_calls = 1
         self.last_run_failures = {}
         memo = _memo()
+        memo.claim_audit = []
         for field in pipeline._SECTION_FIELDS:
-            setattr(memo, field, "Supported research [F1].")
+            setattr(memo, field, "“Supported research” [F1]")
+            memo.claim_audit.append(ClaimAudit(claim_id=f"test-{field}", section=field, kind="quote", proposed_text="Supported research", rendered_text="“Supported research”", citations=["F1"], status="verified"))
+        memo.verification_version = "claim-v1"
         return memo
     mocker.patch.object(pipeline.Synthesizer, "run", full_synthesis)
     await analyze("TSLA", job_id="complete-coverage")
@@ -414,3 +425,17 @@ async def test_sec_extraction_precedes_refreshed_fundamentals(stubbed_pipeline, 
 
 def test_dcf_withholds_unknown_currency_or_undated_market_cap():
     assert pipeline._build_dcf_inputs_from_data(_fundamentals(), _macro(), pipeline.NewsAdjustment(), [_bar(250)]) is None
+
+
+async def test_uncovered_memo_prose_cannot_bypass_publication(stubbed_pipeline, captured_redis, mocker):
+    async def corrupt_synthesis(self, inp):
+        self.last_run_cost = Decimal(0)
+        self.last_run_llm_calls = 1
+        self.last_run_failures = {}
+        memo = _memo()
+        memo.financial_snapshot = "Invented revenue of $999 billion [F1]."
+        return memo
+    mocker.patch.object(pipeline.Synthesizer, "run", corrupt_synthesis)
+    with pytest.raises(pipeline.InsufficientResearchError, match="claim integrity failed"):
+        await analyze("TSLA", job_id="uncovered-prose")
+    assert not any(state.get("memo") for _, state, _ in captured_redis)

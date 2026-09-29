@@ -1,314 +1,206 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from unittest.mock import AsyncMock
 
 import pytest
-from pydantic import BaseModel
 
 from src.agents.base import AgentOutput
-from src.agents.synthesizer import (
-    Memo,
-    Synthesizer,
-    SynthesizerError,
-    SynthesizerInput,
-    _build_facts,
-    _validate_section,
-)
+from src.agents.synthesizer import Memo, Synthesizer, SynthesizerError, SynthesizerInput, _build_facts, assertion_for
+from src.fetchers import evidence_store
+from src.fetchers.filings import _parse_xbrl_to_facts
 from src.llm.client import CompletionResult
-from src.models.filing import Source
+from src.models.evidence import CapturedDocument, passage_at
+from src.models.filing import Filing, Source
 from src.models.finding import Citation, Finding
-from src.models.macro import MacroSnapshot
 from src.models.market import FundamentalSnapshot
-from src.fetchers.financial_normalization import normalize_fmp
+
+NOW = datetime(2024, 2, 1, tzinfo=timezone.utc)
+TEXT = "Revenue was $100 million in fiscal 2023. Operating margins improved."
+DOCUMENT = CapturedDocument(ticker="TSLA", source_id="filing-1", source_url="https://www.sec.gov/source.htm", scope="normalized_filing", text=TEXT, retrieved_at=NOW)
+
+
+def observation():
+    source = Source(provider="sec-api", url="https://api.sec-api.io/xbrl-to-json?accession-no=filing-1", fetched_at=NOW)
+    filing = Filing(ticker="TSLA", filing_type="10-K", filing_date=date(2024, 1, 29), accession_no="filing-1", raw_url=DOCUMENT.source_url, source=source)
+    return _parse_xbrl_to_facts({"StatementsOfIncome": {"Revenues": [{"value": "100000000", "unitRef": "usd", "period": {"startDate": "2023-01-01", "endDate": "2023-12-31"}}]}}, filing, source)[0]
+
+
+@pytest.fixture
+def archive(mocker):
+    documents = {DOCUMENT.document_id: DOCUMENT}
+    obs = observation()
+    observations = {obs.observation_id: obs}
+    async def save(document):
+        return documents.setdefault(document.document_id, document)
+    mocker.patch.object(evidence_store, "save_document", AsyncMock(side_effect=save))
+    mocker.patch.object(evidence_store, "load_documents", AsyncMock(side_effect=lambda ids: {key: value for key, value in documents.items() if key in ids}))
+    mocker.patch.object(evidence_store, "load_observations", AsyncMock(side_effect=lambda ids: {key: value for key, value in observations.items() if key in ids}))
+    mocker.patch.object(evidence_store, "load_boundary_records", AsyncMock(return_value={}))
+    return documents, observations
+
+
+def stub_input():
+    obs = observation()
+    cite = Citation(source_type="filing", source_id=DOCUMENT.source_url, snippet=TEXT,
+                    passages=[passage_at(DOCUMENT, 0, len(TEXT))])
+    return SynthesizerInput(ticker="TSLA", all_agent_outputs=[AgentOutput(agent_name="filings_agent", ticker="TSLA", findings=[Finding(claim="Margins improved.", confidence="high", evidence=[cite])])], fundamentals=FundamentalSnapshot(ticker="TSLA", period="2023-12-31", currency="USD", revenue=obs.value, observations={"revenue": obs}, confidence="high", source=obs.source))
+
+
+def draft(**updates):
+    claims = [
+        {"section": "executive_summary", "kind": "quote", "text": "Revenue was $100 million in fiscal 2023.", "citations": ["F1"], "assertion": None},
+        {"section": "financial_snapshot", "kind": "financial", "text": "", "citations": ["F2"], "assertion": assertion_for(observation()).model_dump(mode="json")},
+    ]
+    for key, value in updates.items():
+        if key == "ticker":
+            continue
+        next(claim for claim in claims if claim["section"] == key).update(value)
+    return json.dumps({"ticker": updates.get("ticker", "TSLA"), "claims": claims})
 
 
 class StubLLM:
-    def __init__(self, response_json: str, cost_per_call: float = 0.10) -> None:
-        self.response = response_json
-        self.cost_per_call = cost_per_call
-        self.calls: list[dict] = []
-
-    async def complete(
-        self,
-        task: str,
-        system: str,
-        prompt: str,
-        cache_system: bool = False,
-        response_schema: type[BaseModel] | None = None,
-    ) -> CompletionResult:
-        self.calls.append(
-            {
-                "task": task,
-                "system": system,
-                "prompt": prompt,
-                "cache_system": cache_system,
-                "response_schema": response_schema,
-            }
-        )
-        return CompletionResult(
-            text=self.response,
-            model_used="stub-claude",
-            input_tokens=600,
-            output_tokens=400,
-            cached_tokens=200,
-            cost_usd=self.cost_per_call,
-            task=task,
-        )
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+    async def complete(self, **kwargs):
+        self.calls.append(kwargs)
+        return CompletionResult(text=self.response, model_used="test", input_tokens=1, output_tokens=1, cached_tokens=0, cost_usd=0.10, task="synthesis")
 
 
-def _filing_finding(claim: str, source_id: str = "10-K 0001-23-001 p.3") -> Finding:
-    return Finding(
-        claim=claim,
-        evidence=[
-            Citation(
-                source_type="filing",
-                source_id=source_id,
-                snippet="snippet",
-            )
-        ],
-        confidence="high",
-    )
-
-
-def _stub_input() -> SynthesizerInput:
-    return SynthesizerInput(
-        ticker="TSLA",
-        all_agent_outputs=[
-            AgentOutput(
-                agent_name="filings_agent",
-                ticker="TSLA",
-                findings=[
-                    _filing_finding("Revenue grew 25% YoY in FY2023."),
-                    _filing_finding(
-                        "Operating margin expanded to 9.2%.",
-                        source_id="10-K 0001-23-001 p.5",
-                    ),
-                ],
-            ),
-        ],
-        fundamentals=FundamentalSnapshot(
-            ticker="TSLA",
-            period="2023-12-31",
-            observations={"revenue": normalize_fmp(
-                "TSLA", [{"symbol": "TSLA", "date": "2023-12-31", "period": "FY", "reportedCurrency": "USD", "revenue": 96773000000}],
-                "income-statement", datetime.now(timezone.utc),
-            )[0]},
-            revenue=Decimal("96773000000"),
-            eps=Decimal("4.30"),
-            net_income=Decimal("14997000000"),
-            confidence="high",
-            source=Source(
-                provider="fmp",
-                url="https://x",
-                fetched_at=datetime.now(timezone.utc),
-            ),
-        ),
-        macro=MacroSnapshot(
-            risk_free_rate=Decimal("4.32"),
-            cpi_yoy=Decimal("3.0"),
-            unemployment_rate=Decimal("3.8"),
-            fed_funds_rate=Decimal("5.33"),
-            as_of=date(2024, 4, 28),
-            source=Source(
-                provider="fred",
-                url="https://x",
-                fetched_at=datetime.now(timezone.utc),
-            ),
-        ),
-    )
-
-
-def _memo_payload(**section_overrides: str) -> str:
-    base = {
-        "ticker": "TSLA",
-        "as_of": "2024-04-28",
-        "executive_summary": "Solid quarter [F1].",
-        "financial_snapshot": "Revenue grew, see [F1].",
-        "recent_catalysts": "Insufficient evidence",
-        "valuation": "Equity holds together [F2].",
-        "earnings_call_tone_shift": "Insufficient evidence",
-        "alt_data_signals": "Insufficient evidence",
-        "bull_case": "Margins improving [F2].",
-        "bear_case": "Insufficient evidence",
-        "risks": "Insufficient evidence",
-        "citations": [],
-    }
-    base.update(section_overrides)
-    import json
-
-    return json.dumps(base)
-
-
-# ---- _build_facts -------------------------------------------------------
-
-
-def test_build_facts_assigns_sequential_tags() -> None:
-    facts = _build_facts(_stub_input())
-    tags = [f.tag for f in facts]
-    assert tags[0] == "F1"
-    # tags must be strictly increasing F1, F2, F3...
-    for i in range(1, len(tags)):
-        assert int(tags[i][1:]) == int(tags[i - 1][1:]) + 1
-
-
-def test_build_facts_includes_findings_fundamentals_and_macro() -> None:
-    facts = _build_facts(_stub_input())
-    text_blob = " | ".join(f.text for f in facts)
-    assert "Revenue grew 25%" in text_blob
-    assert "Operating margin expanded" in text_blob
-    assert "revenue: 96773000000 USD" in text_blob
-    assert "unknown start to 2023-12-31" in text_blob
-    assert "10Y treasury" in text_blob
-
-
-# ---- _validate_section --------------------------------------------------
-
-
-def test_validate_section_passes_when_tags_are_known() -> None:
-    ok, reasons = _validate_section("Revenue grew 25% [F1].", {"F1", "F2"})
-    assert ok
-    assert reasons == []
-
-
-def test_validate_section_flags_unknown_tag() -> None:
-    ok, reasons = _validate_section(
-        "Revenue grew 25% [F999].", {"F1", "F2"}
-    )
-    assert not ok
-    assert any("unknown tags" in r for r in reasons)
-
-
-def test_validate_section_flags_numbers_without_any_tag() -> None:
-    ok, reasons = _validate_section(
-        "Revenue grew 25% in FY2023 with $96B in sales.",
-        {"F1", "F2"},
-    )
-    assert not ok
-    assert any("numerical content without any source tag" in r for r in reasons)
-
-
-def test_validate_section_passes_for_pure_prose() -> None:
-    ok, reasons = _validate_section("The thesis remains intact.", {"F1"})
-    assert ok
-
-
-def test_validate_section_passes_when_tag_strips_internal_digits() -> None:
-    # The digits inside [F1] must NOT trigger the numbers-without-tag rule
-    # when the tag is the only digit-bearing content.
-    ok, reasons = _validate_section("As shown [F1].", {"F1"})
-    assert ok, reasons
-
-
-# ---- Synthesizer happy path ---------------------------------------------
-
-
-async def test_synthesizer_returns_memo_with_valid_tags() -> None:
-    inp = _stub_input()
-    llm = StubLLM(_memo_payload())
-    synth = Synthesizer(llm=llm)
-    memo = await synth.run(inp)
-
-    assert memo.ticker == "TSLA"
-    assert memo.executive_summary == "Solid quarter [F1]."
-    # Citations derived programmatically from used tags (F1, F2).
-    used_sids = {c.source_id for c in memo.citations}
-    assert any("10-K" in s for s in used_sids)
-    # Cost tracked
+async def test_valid_claims_render_from_sources_and_keep_full_passages(archive):
+    synth = Synthesizer(llm=StubLLM(draft()))
+    memo = await synth.run(stub_input())
+    assert memo.executive_summary == '“Revenue was $100 million in fiscal 2023.” [F1]'
+    assert "100000000 USD" in memo.financial_snapshot
+    assert all(claim.status == "verified" for claim in memo.claim_audit)
+    assert memo.citations[0].snippet == "Revenue was $100 million in fiscal 2023."
+    assert memo.citations[1].observation_id == observation().observation_id
     assert synth.last_run_cost == Decimal("0.10")
     assert synth.last_run_llm_calls == 1
-    assert synth.last_run_failures == {}
+    assert memo.verification_version == "claim-v1"
 
 
-async def test_synthesizer_passes_facts_block_in_prompt() -> None:
-    inp = _stub_input()
-    llm = StubLLM(_memo_payload())
-    synth = Synthesizer(llm=llm)
-    await synth.run(inp)
-    prompt = llm.calls[0]["prompt"]
-    assert "[F1]" in prompt
-    assert "TICKER: TSLA" in prompt
-    # cache_system should be on so the long instructions stay warm
-    assert llm.calls[0]["cache_system"] is True
-
-
-async def test_synthesizer_uses_synthesis_task() -> None:
-    llm = StubLLM(_memo_payload())
-    synth = Synthesizer(llm=llm)
-    await synth.run(_stub_input())
+async def test_draft_prompt_includes_verified_evidence_and_structured_assertions(archive):
+    llm = StubLLM(draft())
+    await Synthesizer(llm=llm).run(stub_input())
     assert llm.calls[0]["task"] == "synthesis"
+    assert llm.calls[0]["cache_system"]
+    assert "[F1]" not in llm.calls[0]["prompt"]  # JSON tags are separate from source text.
+    assert '"tag": "F1"' in llm.calls[0]["prompt"]
+    assert "TICKER: TSLA" in llm.calls[0]["prompt"]
 
 
-# ---- Hallucination handling --------------------------------------------
-
-
-async def test_synthesizer_downgrades_section_with_fabricated_tag() -> None:
-    inp = _stub_input()
-    facts = _build_facts(inp)
-    fake_tag = f"F{len(facts) + 500}"
-
-    llm = StubLLM(
-        _memo_payload(
-            executive_summary=f"Tesla beat guidance by $5B [{fake_tag}]."
-        )
-    )
-    synth = Synthesizer(llm=llm)
-    memo = await synth.run(inp)
-
-    assert memo.executive_summary.startswith("Insufficient evidence")
-    assert "unknown tags" in memo.executive_summary
-    # Other sections are untouched
-    assert memo.financial_snapshot == "Revenue grew, see [F1]."
-    # Failure record exposed for the orchestrator
+@pytest.mark.parametrize("change", [
+    {"citations": ["F999"]},
+    {"text": "Revenue was $999 million in fiscal 2023."},
+    {"text": "Revenue was $100 million in fiscal 2024."},
+    {"text": "Revenue was $100 million. Profit was $500 million."},
+    {"citations": []},
+])
+async def test_invalid_quote_is_withheld_without_losing_valid_financial_claim(archive, change):
+    synth = Synthesizer(llm=StubLLM(draft(executive_summary=change)))
+    memo = await synth.run(stub_input())
+    assert memo.executive_summary == "Insufficient evidence"
+    assert "100000000 USD" in memo.financial_snapshot
+    assert memo.claim_audit[0].status == "rejected"
     assert "executive_summary" in synth.last_run_failures
 
 
-async def test_synthesizer_downgrades_section_with_bare_numbers() -> None:
-    inp = _stub_input()
-    llm = StubLLM(
-        _memo_payload(
-            financial_snapshot="Revenue was $96.8B and margin was 9.2%.",
-        )
-    )
-    synth = Synthesizer(llm=llm)
-    memo = await synth.run(inp)
-
-    assert memo.financial_snapshot.startswith("Insufficient evidence")
-    assert "numerical content without any source tag" in memo.financial_snapshot
+@pytest.mark.parametrize("field,value", [("value", "999000000"), ("unit", "EUR"), ("currency", "EUR"), ("metric", "total_assets"), ("period_start", "2022-01-01"), ("period_end", "2022-12-31"), ("period_basis", "quarterly")])
+async def test_financial_assertions_are_checked_field_by_field(archive, field, value):
+    assertion = assertion_for(observation()).model_dump(mode="json")
+    assertion[field] = value
+    memo = await Synthesizer(llm=StubLLM(draft(financial_snapshot={"assertion": assertion}))).run(stub_input())
+    assert memo.financial_snapshot == "Insufficient evidence"
+    assert any(check.field == field and not check.passed for check in memo.claim_audit[1].checks)
 
 
-async def test_synthesizer_preserves_insufficient_evidence_sections() -> None:
-    inp = _stub_input()
-    llm = StubLLM(_memo_payload())  # several sections already say "Insufficient evidence"
-    synth = Synthesizer(llm=llm)
-    memo = await synth.run(inp)
-
-    # These were "Insufficient evidence" in the payload — must NOT be downgraded again
-    assert memo.recent_catalysts == "Insufficient evidence"
-    assert memo.bear_case == "Insufficient evidence"
+async def test_a_known_observation_cannot_be_cited_through_an_unrelated_tag(archive):
+    memo = await Synthesizer(llm=StubLLM(draft(financial_snapshot={"citations": ["F1"]}))).run(stub_input())
+    assert memo.financial_snapshot == "Insufficient evidence"
+    assert "not bound" in memo.claim_audit[1].reasons[0]
 
 
-async def test_synthesizer_raises_on_invalid_json() -> None:
-    llm = StubLLM("not JSON at all")
-    synth = Synthesizer(llm=llm)
-    with pytest.raises(SynthesizerError):
-        await synth.run(_stub_input())
+async def test_interpretations_remain_visibly_unverified(archive):
+    memo = await Synthesizer(llm=StubLLM(draft(executive_summary={"kind": "interpretation", "text": "Margins could remain under pressure."}))).run(stub_input())
+    assert memo.claim_audit[0].status == "needs_review"
+    assert "requires analyst review" in memo.executive_summary
 
 
-async def test_synthesizer_pins_ticker_when_llm_diverges() -> None:
-    inp = _stub_input()
-    llm = StubLLM(_memo_payload(ticker="WRONG"))
-    synth = Synthesizer(llm=llm)
-    memo = await synth.run(inp)
+async def test_numeric_interpretation_cannot_hide_unsupported_claims(archive):
+    memo = await Synthesizer(llm=StubLLM(draft(executive_summary={"kind": "interpretation", "text": "Revenue was $999 billion and profit was $123 billion."}))).run(stub_input())
+    assert memo.claim_audit[0].status == "rejected"
+
+
+async def test_legacy_free_text_memos_are_not_a_validation_bypass(archive):
+    with pytest.raises(SynthesizerError, match="structured claim"):
+        await Synthesizer(llm=StubLLM('{"ticker":"TSLA","executive_summary":"Invented $999 [F1]"}')).run(stub_input())
+
+
+async def test_missing_sources_fail_before_a_paid_llm_call(archive):
+    archive[0].clear()
+    archive[1].clear()
+    llm = StubLLM(draft())
+    with pytest.raises(SynthesizerError, match="No verifiable"):
+        await Synthesizer(llm=llm).run(stub_input())
+    assert llm.calls == []
+
+
+async def test_synthesizer_pins_ticker_and_does_not_accept_model_dates(archive):
+    memo = await Synthesizer(llm=StubLLM(draft(ticker="WRONG"))).run(stub_input())
     assert memo.ticker == "TSLA"
+    assert memo.as_of == datetime.now(timezone.utc).date()
 
 
-def test_citation_tags_survive_sparse_fact_selection():
-    from src.agents.synthesizer import Memo, _Fact, _derive_citations
-    memo = Memo.model_validate_json(_memo_payload(executive_summary="Supported [F9].", financial_snapshot="Insufficient evidence"))
-    for field in ("recent_catalysts", "valuation", "earnings_call_tone_shift", "alt_data_signals", "bull_case", "bear_case", "risks"):
-        setattr(memo, field, "Insufficient evidence")
-    citations = _derive_citations(memo, [_Fact(tag="F9", text="Supported", source_type="filing", source_id="filing-9")])
-    assert len(citations) == 1
-    assert citations[0].tag == "F9"
-    assert citations[0].source_id == "filing-9"
+async def test_sparse_tags_keep_source_identities(archive):
+    inp = stub_input()
+    inp.all_agent_outputs[0].findings.insert(0, Finding(claim="Legacy unsupported", confidence="low", evidence=[Citation(source_type="filing", source_id="legacy", snippet="legacy")]))
+    payload = json.loads(draft())
+    payload["claims"][0]["citations"] = ["F2"]
+    payload["claims"][1]["citations"] = ["F3"]
+    memo = await Synthesizer(llm=StubLLM(json.dumps(payload))).run(inp)
+    assert {citation.tag for citation in memo.citations} == {"F2", "F3"}
+
+
+async def test_quote_cannot_include_an_unrelated_citation(archive):
+    memo = await Synthesizer(llm=StubLLM(draft(executive_summary={"citations": ["F1", "F2"]}))).run(stub_input())
+    assert memo.claim_audit[0].status == "rejected"
+
+
+async def test_financial_assertion_cannot_include_unrelated_sources(archive):
+    memo = await Synthesizer(llm=StubLLM(draft(financial_snapshot={"citations": ["F2", "F1"]}))).run(stub_input())
+    assert memo.claim_audit[1].status == "rejected"
+
+
+async def test_financial_prose_cannot_change_the_meaning_of_a_correct_number(archive):
+    memo = await Synthesizer(llm=StubLLM(draft(financial_snapshot={"text": "Profit was 100000000 USD."}))).run(stub_input())
+    assert memo.claim_audit[1].status == "rejected"
+
+
+async def test_rendered_prose_injection_is_detected_by_integrity_audit(archive):
+    from src.report_integrity import memo_integrity_errors
+    from tests.eval.citation_audit import audit_memo
+    memo = await Synthesizer(llm=StubLLM(draft())).run(stub_input())
+    assert not memo_integrity_errors(memo)
+    assert not audit_memo("TSLA", memo).has_hallucinations
+    memo.executive_summary += " Profit was $999 billion [F1]."
+    assert memo_integrity_errors(memo)
+    assert audit_memo("TSLA", memo).has_hallucinations
+
+
+async def test_integrity_audit_rejects_unrelated_quote_citation(archive):
+    from src.report_integrity import memo_integrity_errors
+    memo = await Synthesizer(llm=StubLLM(draft())).run(stub_input())
+    memo.claim_audit[0].citations.append("F2")
+    memo.executive_summary += " [F2]"
+    assert any("quote differs" in error for error in memo_integrity_errors(memo))
+
+
+async def test_integrity_audit_rejects_duplicate_claim_identifiers(archive):
+    from src.report_integrity import memo_integrity_errors
+    memo = await Synthesizer(llm=StubLLM(draft())).run(stub_input())
+    memo.claim_audit[1].claim_id = memo.claim_audit[0].claim_id
+    assert "Duplicate claim identifiers" in memo_integrity_errors(memo)

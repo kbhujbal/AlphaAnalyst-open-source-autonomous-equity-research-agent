@@ -13,6 +13,7 @@ from src.agents.filings_agent import FilingsAgent
 from src.llm.client import CompletionResult
 from src.models.filing import Filing, Source
 from src.models.finding import Citation, Finding
+from src.models.evidence import CapturedDocument
 
 
 def _filing(filing_type: str, accession: str) -> Filing:
@@ -84,30 +85,26 @@ def _well_formed_response(claim: str = "Margins improved.") -> str:
             "claim": claim,
             "confidence": "high",
             "citations": [
-                {"page_hint": 1, "snippet": "Revenue grew 25%."},
-                {"page_hint": 2, "snippet": "Operating margin expanded."},
+                {"chunk_id": "chunk-1", "quote": "Tesla revenue grew 25% to $96.8B in 2023."},
+                {"chunk_id": "chunk-2", "quote": "Operating margin expanded to 9.2%."},
             ],
         }
     )
 
 
-def _stub_chunks() -> list[dict]:
-    return [
-        {
-            "id": 1,
-            "doc_type": "filing",
-            "source_id": "0001-23-001",
-            "chunk_text": "Tesla revenue grew 25% to $96.8B in 2023.",
-            "similarity": 0.91,
-        },
-        {
-            "id": 2,
-            "doc_type": "filing",
-            "source_id": "0001-23-001",
-            "chunk_text": "Operating margin expanded to 9.2%.",
-            "similarity": 0.88,
-        },
-    ]
+def _stub_chunks(accession="0001-23-001") -> list[dict]:
+    texts = ["Tesla revenue grew 25% to $96.8B in 2023.", "Operating margin expanded to 9.2%."]
+    document = CapturedDocument(ticker="TSLA", source_id=accession, source_url="https://www.sec.gov/x.htm",
+                                scope="normalized_filing", text="\n".join(texts), retrieved_at=datetime.now(timezone.utc))
+    return [dict(id=i+1, chunk_id=f"chunk-{i+1}", doc_type="filing", source_id=accession,
+                 chunk_text=text, similarity=0.9, document_id=document.document_id,
+                 document_hash=document.content_hash, source_url=document.source_url,
+                 start=0 if i == 0 else len(texts[0]) + 1, retrieved_at=document.retrieved_at)
+            for i, text in enumerate(texts)]
+
+
+def _search_stub(*args, **kwargs):
+    return _stub_chunks(kwargs["source_ids"][0])
 
 
 @pytest.fixture
@@ -126,7 +123,7 @@ def stub_fetchers(mocker):
             new=AsyncMock(return_value=[_filing("8-K", "0001-23-003")]),
         ),
         "search": mocker.patch.object(
-            fa, "search", new=AsyncMock(return_value=_stub_chunks())
+            fa, "search", new=AsyncMock(side_effect=_search_stub)
         ),
     }
 
@@ -218,7 +215,7 @@ async def test_filings_agent_continues_when_one_filing_fetch_fails(
         fa, "fetch_recent_8ks", new=AsyncMock(return_value=[])
     )
     mocker.patch.object(
-        fa, "search", new=AsyncMock(return_value=_stub_chunks())
+        fa, "search", new=AsyncMock(side_effect=_search_stub)
     )
 
     llm = StubLLM(_well_formed_response())
@@ -238,7 +235,7 @@ async def test_filings_agent_drops_finding_with_no_valid_citations(
             "claim": "Some claim",
             "confidence": "medium",
             "citations": [
-                {"page_hint": 999, "snippet": "ok"},
+                {"chunk_id": "nonexistent", "quote": "Unsupported passage here."},
             ],
         }
     )
@@ -246,9 +243,5 @@ async def test_filings_agent_drops_finding_with_no_valid_citations(
     agent = FilingsAgent(llm=llm)
     output = await agent.run("TSLA")
 
-    # page_hint 999 is out of range; the agent still creates a Citation with
-    # the page label but no chunk source_id — Finding is still produced
-    # because validation requires >=1 citation.
-    assert len(output.findings) == output.llm_calls
-    for f in output.findings:
-        assert len(f.evidence) == 1
+    assert output.findings == []
+    assert output.errors

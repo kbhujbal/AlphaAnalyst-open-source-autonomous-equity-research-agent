@@ -58,8 +58,9 @@ def export_pdf(memo: Memo, path: Path, *, warnings: list[str] | None = None) -> 
         styles["Heading2"],
     ))
     story.append(Paragraph(
-        "Research prototype. Valuation is experimental. Citations have not been "
-        "verified at the claim level. Independently review sources and calculations.",
+        "Research prototype. Valuation is experimental. Exact quotes and structured financial "
+        "assertions receive deterministic checks when a claim-v1 audit is present. "
+        "Interpretations require analyst review; legacy reports remain unverified.",
         styles["BodyText"],
     ))
     for warning in warnings or []:
@@ -82,6 +83,20 @@ def export_pdf(memo: Memo, path: Path, *, warnings: list[str] | None = None) -> 
                     styles["BodyText"],
                 )
             )
+
+            for passage in c.passages:
+                story.append(Paragraph(escape(
+                    f"Captured {passage.scope}; document {passage.document_id}; "
+                    f"hash {passage.document_hash}; Unicode offsets [{passage.start}, {passage.end}); "
+                    f"retrieved {passage.retrieved_at.isoformat()}"
+                ), styles["BodyText"]))
+    if memo.claim_audit:
+        story.append(PageBreak())
+        story.append(Paragraph("Claim verification audit", styles["Heading2"]))
+        for claim in memo.claim_audit:
+            story.append(Paragraph(escape(
+                f"{claim.claim_id}: {claim.status} ({claim.kind}) — {'; '.join(claim.reasons)}"
+            ), styles["BodyText"]))
 
     doc.build(story)
     logger.info("wrote PDF memo to %s", path)

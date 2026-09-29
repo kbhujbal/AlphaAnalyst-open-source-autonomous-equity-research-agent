@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memos/{job_id}/evidence/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evidence Snapshot */
+        get: operations["get_evidence_snapshot_api_v1_memos__job_id__evidence__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -143,6 +160,31 @@ export interface components {
             /** Payload Hash */
             payload_hash: string;
         };
+        /** CapturedDocument */
+        CapturedDocument: {
+            /** Ticker */
+            ticker: string;
+            /** Source Id */
+            source_id: string;
+            /** Source Url */
+            source_url: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "normalized_filing" | "transcript" | "feed_excerpt" | "provider_record";
+            /** Text */
+            text: string;
+            /**
+             * Retrieved At
+             * Format: date-time
+             */
+            retrieved_at: string;
+            /** Content Hash */
+            readonly content_hash: string;
+            /** Document Id */
+            readonly document_id: string;
+        };
         /** Citation */
         Citation: {
             /** Tag */
@@ -156,6 +198,42 @@ export interface components {
             source_id: string;
             /** Snippet */
             snippet: string;
+            /** Passages */
+            passages?: components["schemas"]["SourcePassage"][];
+            /** Observation Id */
+            observation_id?: string | null;
+        };
+        /** ClaimAudit */
+        ClaimAudit: {
+            /** Claim Id */
+            claim_id: string;
+            /**
+             * Section
+             * @enum {string}
+             */
+            section: "executive_summary" | "financial_snapshot" | "recent_catalysts" | "valuation" | "earnings_call_tone_shift" | "alt_data_signals" | "bull_case" | "bear_case" | "risks";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "quote" | "financial" | "interpretation";
+            /** Proposed Text */
+            proposed_text: string;
+            /** Rendered Text */
+            rendered_text?: string | null;
+            /** Citations */
+            citations: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "verified" | "needs_review" | "rejected";
+            /** Observation Id */
+            observation_id?: string | null;
+            /** Checks */
+            checks?: components["schemas"]["NumericalCheck"][];
+            /** Reasons */
+            reasons?: string[];
         };
         /** ExportLinks */
         ExportLinks: {
@@ -268,6 +346,12 @@ export interface components {
             risks: string;
             /** Citations */
             citations?: components["schemas"]["Citation"][];
+            /** Claim Audit */
+            claim_audit?: components["schemas"]["ClaimAudit"][];
+            /** Verification Version */
+            verification_version?: "claim-v1" | null;
+            /** Verification Issues */
+            verification_issues?: string[];
         };
         /** MemoResponse */
         MemoResponse: {
@@ -293,6 +377,17 @@ export interface components {
             financial_facts?: components["schemas"]["FinancialObservation"][];
             /** Warnings */
             warnings?: string[];
+        };
+        /** NumericalCheck */
+        NumericalCheck: {
+            /** Field */
+            field: string;
+            /** Claimed */
+            claimed: string | null;
+            /** Expected */
+            expected: string | null;
+            /** Passed */
+            passed: boolean;
         };
         /** ObservationSource */
         ObservationSource: {
@@ -344,6 +439,37 @@ export interface components {
              */
             start_method: "reported" | "prior_annual_end" | "unknown";
             start_evidence?: components["schemas"]["BoundaryEvidence"] | null;
+        };
+        /** SourcePassage */
+        SourcePassage: {
+            /** Document Id */
+            document_id: string;
+            /** Document Hash */
+            document_hash: string;
+            /** Source Id */
+            source_id: string;
+            /** Source Url */
+            source_url: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "normalized_filing" | "transcript" | "feed_excerpt" | "provider_record";
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Text */
+            text: string;
+            /** Text Hash */
+            text_hash: string;
+            /**
+             * Retrieved At
+             * Format: date-time
+             */
+            retrieved_at: string;
+            /** Snapshot Url */
+            snapshot_url?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -508,6 +634,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_snapshot_api_v1_memos__job_id__evidence__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapturedDocument"];
+                };
             };
             /** @description Validation Error */
             422: {

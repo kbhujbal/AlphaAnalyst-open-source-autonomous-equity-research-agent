@@ -64,3 +64,20 @@ test("financial observation contracts preserve non-USD units and reporting conte
   assert.equal(response.financial_facts[0].period.start, "2023-10-01");
   assert.equal("raw_payload" in response.financial_facts[0], false);
 });
+
+test("claim audits and exact source passages survive runtime validation", () => {
+  const text = "Exact source passage with revenue of USD 100.";
+  const passage = { document_id: "a".repeat(64), document_hash: "b".repeat(64), source_id: "filing-1", source_url: "https://example.test/filing", scope: "normalized_filing", start: 10, end: 10 + text.length, text, text_hash: "c".repeat(64), retrieved_at: "2026-01-01T00:00:00Z", snapshot_url: "/api/v1/memos/job/evidence/doc" };
+  const memo = MemoZ.parse({ ...demo.sections, verification_version: "claim-v1", citations: [{ ...demo.sections.citations[0], passages: [passage] }], claim_audit: [{ claim_id: "C1", section: "executive_summary", kind: "quote", proposed_text: text, rendered_text: `“${text}”`, citations: ["F1"], status: "verified" }] });
+  assert.equal(memo.verification_version, "claim-v1");
+  assert.equal(memo.claim_audit[0].status, "verified");
+  assert.equal(memo.citations[0].passages[0].text, text);
+  assert.equal(memo.citations[0].passages[0].snapshot_url, passage.snapshot_url);
+});
+
+test("legacy reports cannot acquire verification status through defaults", () => {
+  const memo = MemoZ.parse(demo.sections);
+  assert.equal(memo.verification_version, null);
+  assert.deepEqual(memo.claim_audit, []);
+  assert.deepEqual(memo.citations[0].passages, []);
+});

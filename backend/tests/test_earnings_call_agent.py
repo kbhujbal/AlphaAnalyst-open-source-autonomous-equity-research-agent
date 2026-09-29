@@ -19,6 +19,11 @@ from src.models.filing import Source
 from src.models.transcript import Transcript
 
 
+@pytest.fixture(autouse=True)
+def captured_source_store(mocker):
+    return mocker.patch.object(eca, "save_document", new=AsyncMock(side_effect=lambda document: document))
+
+
 def _transcript(quarter: int, year: int, content: str) -> Transcript:
     return Transcript(
         ticker="TSLA",
@@ -201,3 +206,23 @@ async def test_earnings_call_agent_skips_synthesis_when_only_one_succeeds(
     # Only Q4 produced an analysis; synthesis should be skipped.
     assert output.llm_calls == 1
     assert any("no paragraphs" in e for e in output.errors)
+
+
+async def test_nonverbatim_guidance_is_rejected(stub_transcripts):
+    payload = json.loads(_per_transcript_response())
+    payload["guidance_quotes"] = ["We guarantee revenue will triple immediately."]
+    output = await EarningsCallAgent(llm=StubLLM([json.dumps(payload)] * 4 + [_synthesis_response()])).run("TSLA")
+    assert not any("guidance highlights" in finding.claim for finding in output.findings)
+    assert any("non-verbatim guidance" in error for error in output.errors)
+    assert all(citation.passages for finding in output.findings for citation in finding.evidence)
+
+
+def test_repeated_transcript_paragraph_keeps_the_requested_occurrence():
+    from src.models.evidence import CapturedDocument
+    content = "Repeated source paragraph.\n\nRepeated source paragraph."
+    transcript = _transcript(4, 2023, content)
+    document = CapturedDocument(ticker="TSLA", source_id="2023Q4", source_url=transcript.source.url,
+                                scope="transcript", text=content, retrieved_at=transcript.source.fetched_at)
+    analysis = eca._PerTranscriptAnalysis(guidance_quotes=[], key_topics=["discussion"], tone_shift_narrative="", citations=[2])
+    findings = eca._per_transcript_findings(transcript, _split_paragraphs(content), analysis, {}, document)
+    assert findings[0].evidence[0].passages[0].start == len("Repeated source paragraph.\n\n")

@@ -62,23 +62,18 @@ def _build_evidence(
 ) -> list[Citation]:
     by_idx = {i: f for i, _, f in flat}
     out: list[Citation] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     for r in refs:
         f = by_idx.get(r)
         if f is None or not f.evidence:
             continue
-        original = f.evidence[0]
-        key = (original.source_type, original.source_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(
-            Citation(
-                source_type=original.source_type,
-                source_id=original.source_id,
-                snippet=f.claim[:480],
-            )
-        )
+        for original in f.evidence:
+            key = (original.source_type, original.source_id, original.snippet)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(original.model_copy(deep=True))
+
     return out
 
 

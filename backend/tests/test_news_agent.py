@@ -15,6 +15,11 @@ from src.models.filing import Source
 from src.models.news import NewsArticle
 
 
+@pytest.fixture(autouse=True)
+def captured_source_store(mocker):
+    return mocker.patch.object(na, "save_document", new=AsyncMock(side_effect=lambda document: document))
+
+
 def _article(
     headline: str,
     url: str,

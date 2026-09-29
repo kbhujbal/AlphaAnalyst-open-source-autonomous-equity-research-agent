@@ -177,6 +177,10 @@ class Document(Base):
     source_id: Mapped[str | None] = mapped_column(String(255))
     chunk_text: Mapped[str | None] = mapped_column(Text)
     embedding: Mapped[Any | None] = mapped_column(Vector(1024))
+    evidence_document_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("evidence_documents.document_id"))
+    start_offset: Mapped[int | None] = mapped_column(Integer)
+    end_offset: Mapped[int | None] = mapped_column(Integer)
+
 
     __table_args__ = (
         Index(
@@ -223,3 +227,16 @@ class FinancialObservationRecord(Base):
 async def ensure_company(session: AsyncSession, ticker: str) -> None:
     """Concurrent fetchers can initialize the same company without a check/insert race."""
     await session.execute(pg_insert(Company).values(ticker=ticker).on_conflict_do_nothing())
+
+
+class EvidenceDocument(Base):
+    __tablename__ = "evidence_documents"
+    document_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16), ForeignKey("companies.ticker"), nullable=False)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    __table_args__ = (Index("ix_evidence_ticker_source", "ticker", "source_id"),)

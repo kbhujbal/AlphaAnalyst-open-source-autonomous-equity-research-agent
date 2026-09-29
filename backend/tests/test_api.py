@@ -341,3 +341,34 @@ async def test_financial_facts_expose_context_and_provenance_without_raw_payload
     assert fact["source"]["document_url"] == "https://www.sec.gov/test.htm"
     assert fact["observation_id"] == facts[0].observation_id
     assert "raw_payload" not in fact
+
+
+async def test_captured_source_endpoint_is_scoped_to_report_citations(client, stubbed_redis, mocker):
+    from src.models.evidence import CapturedDocument, passage_at
+    from src.models.finding import Citation
+    doc = CapturedDocument(ticker="TSLA", source_id="filing-1", source_url="https://www.sec.gov/filing.htm", scope="normalized_filing", text="Exact retained source passage.", retrieved_at=datetime.now(timezone.utc))
+    job_id = str(uuid4())
+    memo = _stored_memo()
+    memo["verification_version"] = "claim-v1"
+    memo["citations"] = [Citation(tag="F1", source_type="filing", source_id=doc.source_url, snippet=doc.text, passages=[passage_at(doc, 0, len(doc.text))]).model_dump(mode="json")]
+    stubbed_redis[f"analysis:job:{job_id}"] = {"status": "partial", "memo": memo}
+    load = mocker.patch.object(routes_module, "load_documents", AsyncMock(return_value={doc.document_id: doc}))
+    response = await client.get(f"/api/v1/memos/{job_id}/evidence/{doc.document_id}")
+    assert response.status_code == 200
+    assert response.json()["text"] == doc.text
+    assert response.json()["content_hash"] == doc.content_hash
+    rendered_memo = (await client.get(f"/api/v1/memos/{job_id}")).json()
+    passage = rendered_memo["sections"]["citations"][0]["passages"][0]
+    assert passage["snapshot_url"].endswith(doc.document_id)
+    load.reset_mock()
+    assert (await client.get(f"/api/v1/memos/{job_id}/evidence/unrelated-document")).status_code == 404
+    load.assert_not_awaited()
+
+
+@pytest.mark.parametrize("status", ["running", "failed"])
+async def test_unfinished_or_failed_jobs_do_not_expose_source_snapshots(client, stubbed_redis, mocker, status):
+    job_id = str(uuid4())
+    stubbed_redis[f"analysis:job:{job_id}"] = {"status": status, "memo": _stored_memo()}
+    load = mocker.patch.object(routes_module, "load_documents", AsyncMock())
+    assert (await client.get(f"/api/v1/memos/{job_id}/evidence/anything")).status_code == 404
+    load.assert_not_awaited()

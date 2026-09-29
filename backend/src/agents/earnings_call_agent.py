@@ -12,6 +12,8 @@ from src.agents.base import Agent, AgentOutput
 from src.fetchers.transcripts import fetch_recent_transcripts
 from src.models.finding import Citation, Finding
 from src.models.transcript import Transcript
+from src.models.evidence import CapturedDocument, passage_at
+from src.fetchers.evidence_store import save_document
 
 logger = logging.getLogger(__name__)
 
@@ -104,26 +106,28 @@ def _per_transcript_findings(
     paragraphs: list[str],
     analysis: _PerTranscriptAnalysis,
     keyword_counts: dict[str, int],
+    document: CapturedDocument,
 ) -> list[Finding]:
     label = _label(transcript)
     citations: list[Citation] = []
+    starts = []
+    cursor = 0
+    for paragraph in paragraphs:
+        start = document.text.find(paragraph, cursor)
+        starts.append(start)
+        cursor = start + len(paragraph)
     for idx in analysis.citations:
         if 1 <= idx <= len(paragraphs):
             citations.append(
                 Citation(
                     source_type="transcript",
                     source_id=f"{label} transcript, paragraph {idx}",
-                    snippet=paragraphs[idx - 1][:480],
+                    snippet=paragraphs[idx - 1][:4000],
+                    passages=[passage_at(document, starts[idx - 1], starts[idx - 1] + len(paragraphs[idx - 1][:4000]))],
                 )
             )
     if not citations:
-        citations.append(
-            Citation(
-                source_type="transcript",
-                source_id=f"{label} transcript",
-                snippet=paragraphs[0][:480] if paragraphs else "",
-            )
-        )
+        return []
 
     findings: list[Finding] = []
     if analysis.guidance_quotes:
@@ -169,17 +173,9 @@ def _synthesis_finding(
     ticker: str,
     transcripts: list[Transcript],
     synth: _CrossQuarterSynthesis,
+    evidence: list[Citation],
 ) -> Finding | None:
-    citations: list[Citation] = []
-    for t in transcripts:
-        label = _label(t)
-        citations.append(
-            Citation(
-                source_type="transcript",
-                source_id=f"{label} transcript",
-                snippet=(t.content or "")[:240].replace("\n", " "),
-            )
-        )
+    citations = [citation.model_copy(deep=True) for citation in evidence]
     if not citations:
         return None
 
@@ -215,6 +211,15 @@ class EarningsCallAgent(Agent):
             )
             return None
 
+        document = CapturedDocument(ticker=ticker, source_id=f"{transcript.year}Q{transcript.quarter}",
+                                    source_url=transcript.source.url, scope="transcript", text=transcript.content,
+                                    retrieved_at=transcript.source.fetched_at)
+        try:
+            document = await save_document(document)
+        except Exception as exc:
+            output.errors.append(f"Transcript evidence capture failed: {exc}")
+            return None
+
         keyword_counts = _count_keywords(transcript.content)
         kw_summary = ", ".join(f"{k}={v}" for k, v in keyword_counts.items())
 
@@ -247,8 +252,15 @@ class EarningsCallAgent(Agent):
                 f"{_label(transcript)}: failed to parse per-transcript analysis"
             )
             return None
+        cited_text = [paragraphs[index - 1] for index in analysis.citations if 1 <= index <= len(paragraphs)]
+        accepted_quotes = [quote for quote in analysis.guidance_quotes if quote and any(quote in paragraph for paragraph in cited_text)]
+        if len(accepted_quotes) != len(analysis.guidance_quotes):
+            output.errors.append(f"{_label(transcript)}: non-verbatim guidance quote rejected")
+        analysis.guidance_quotes = accepted_quotes
+        if not cited_text:
+            output.errors.append(f"{_label(transcript)}: no valid paragraph references")
         for f in _per_transcript_findings(
-            transcript, paragraphs, analysis, keyword_counts
+            transcript, paragraphs, analysis, keyword_counts, document
         ):
             output.findings.append(f)
         return analysis
@@ -303,7 +315,7 @@ class EarningsCallAgent(Agent):
         synth = _parse_json(result.text, _CrossQuarterSynthesis)
         if isinstance(synth, _CrossQuarterSynthesis):
             f = _synthesis_finding(
-                ticker, [t for t, _ in analyses], synth
+                ticker, [t for t, _ in analyses], synth, [citation for finding in output.findings for citation in finding.evidence]
             )
             if f is not None:
                 output.findings.append(f)

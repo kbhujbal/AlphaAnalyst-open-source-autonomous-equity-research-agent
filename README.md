@@ -4,8 +4,9 @@ AlphaAnalyst is an experimental US equity research assistant. It collects filing
 market data, news, and earnings transcripts and drafts a research memo with source
 references and experimental valuation outputs. Analyst review is required.
 
-The implementation does **not** establish claim-level factual accuracy, investment
-outperformance, or production readiness. The current DCF uses simplified inputs;
+Claim-level checks establish exact-source matching and consistency with retained
+financial observations. They do **not** certify source correctness, qualitative
+entailment, investment outperformance, or production readiness. The current DCF uses simplified inputs;
 Excel exports are snapshots with a few total formulas, not recalculating models.
 A different model providing skeptical review does not guarantee independent research.
 
@@ -95,8 +96,8 @@ unimplemented, so live reports will commonly be partial. Warnings are conservati
 there is not yet a configurable coverage policy for different research workflows.
 
 Citation objects now carry their explicit `tag` when emitted by the synthesizer.
-The interface does not guess missing tag mappings. Actual filing-page extraction,
-quote verification, and claim-by-claim source support remain future work.
+The interface does not guess missing tag mappings. Actual filing-page extraction remains future work. The claim-verification stage
+below adds retained source passages and conservative claim-level publication checks.
 
 ## Validation without provider credentials
 
@@ -157,10 +158,10 @@ financial validation.
 Reports currently expire from Redis after 24 hours and exports use local temporary
 storage. Jobs use in-process background tasks. Authentication, durable workers,
 tenant isolation, canonical point-in-time financial data, corrected valuation,
-recalculating Excel models, and claim-level verification remain pending.
+recalculating Excel models, and independent semantic/source-quality review remain pending.
 Charts that need structured series explicitly show unavailable states; this stage
-does not add chart data to the API. The financial-observation foundation is described below. Exact claim verification,
-a defensible valuation model, and an analyst pilot remain subsequent milestones.
+does not add chart data to the API. The financial-observation foundation is described below. A defensible valuation model and an analyst pilot remain
+subsequent milestones.
 
 The report-status and nullable-export contract changes require consumers to update
 from the previous development checkout. Deploy the backend and frontend together;
@@ -223,3 +224,71 @@ estimates pipelines have not been converted into this financial-statement model.
 The stored filing dates and timezone-aware acceptance timestamps do not by
 themselves make the application a point-in-time backtesting system. Naive provider
 acceptance timestamps remain in source payloads and are not assigned a timezone.
+
+
+## Claim-level evidence and publication checks
+
+Apply migration `0004_evidence_documents` with `uv run --frozen alembic upgrade head`
+from `backend/` before running this version. Run a fresh analysis to re-index source
+material. Existing retrieval chunks without archive/version/offset metadata are
+excluded from verifiable retrieval; old reports remain visibly unverified.
+
+The indexer now retains immutable versions of captured normalized filing text and
+transcripts. Retrieval chunks reference document hashes and real Unicode character
+offsets, never invented PDF page numbers. Filing searches are restricted to the
+requested accession numbers. News evidence captures provider headline/snippet
+excerpts and explicitly identifies them as excerpts, not full articles. Changed
+source text keeps a separate document identity. Identical captures retain their
+original retrieval timestamp. These are captured normalized text versions, not raw
+HTML/PDF byte archives; table layout preservation remains separate work.
+
+Agents must supply a real chunk identifier and an exact contiguous quote. Unknown
+references, altered/noncontiguous quotes, and out-of-range evidence are rejected.
+Transcript guidance quotes are checked against cited paragraphs; missing paragraph
+references no longer receive a fabricated fallback citation. Skeptical review
+retains all original evidence instead of replacing it with generated analysis.
+
+The synthesizer now produces structured atomic claims instead of free-form memo
+sections. A deterministic publication gate supports these claim kinds:
+
+| Kind | Publication rule | Meaning of the displayed result |
+| --- | --- | --- |
+| `quote` | Every cited tag must contain the exact quote in an independently reloaded source snapshot. | The retained source said this; its real-world truth is not independently certified. |
+| `financial` | Copy a specific observation assertion. The value, metric, unit, currency, dates, period kind/basis, source payload hash, and source binding must match. | The server renders a statement from the checked observation; arbitrary numerical prose is not accepted. |
+| `interpretation` | Evidence references must resolve; numerical/date prose is rejected. | Labeled as requiring analyst review; semantic entailment is not automatically certified. |
+
+Financial source records are reloaded independently from the observation store.
+Derived annual start dates require the actual preceding fiscal boundary record and
+its matching hash. Original provider JSON fields are retained as source passages.
+Financial statements are rendered by Python; the LLM cannot turn an asset value
+into revenue by changing prose, add an unrelated citation, infer a currency, or
+substitute a different fiscal year. Rounded values, derived growth rates, ratios,
+FX conversions, and other new numerical calculations require future registered
+calculation traces rather than a permissive text-number match.
+
+Legacy free-text LLM responses cannot bypass this gate. Rejected claims are withheld
+from section prose and recorded in `Memo.claim_audit`. Interpretations and rejected
+claims generate partial-report warnings. A separate report-integrity gate verifies
+that all published prose was rendered from accepted claims and explicit citation
+identifiers. Citation auditing now checks identities and coverage rather than
+comparing citation counts alone. If no usable cited research survives, no memo is
+published.
+
+The interface exposes the claim audit, individual numerical checks, and a citation
+inspection dialog with exact passages, version hashes, offsets, and retrieval times.
+`GET /api/v1/memos/{job_id}/evidence/{document_id}` returns a retained source snapshot
+only when it is cited by that completed/partial claim-v1 report. The captured JSON
+link is included on returned passages. Offsets use Unicode code points, not bytes
+or JavaScript UTF-16 indices. PDFs include the source identifiers and claim audit.
+
+Not yet covered by the numerical publication gate: DCF/comparables outputs, macro
+snapshots, price-return calculations, insider aggregations, or sentiment statistics.
+Those values are withheld from the verified memo evidence bundle until reproducible
+source/calculation traces exist. Experimental Excel valuation snapshots are outside
+this claim-verification contract. This conservative restriction is intentional.
+
+Still pending: live PostgreSQL/migration and provider-account validation, a larger
+independently labeled claim-support corpus, semantic entailment/contradiction review,
+full article retrieval, HTML/PDF table/page locators, registered derived calculations,
+and production access controls/retention policies. Deterministic quote and numerical
+checks do not replace a research analyst's judgment or prove investment merit.

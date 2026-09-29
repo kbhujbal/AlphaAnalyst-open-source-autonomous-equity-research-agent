@@ -4,11 +4,30 @@ import type { components } from "@/types/api";
 export type CitationData = components["schemas"]["Citation"];
 export type Memo = Required<components["schemas"]["Memo"]>;
 
+const SourcePassageZ = z.object({
+  document_id: z.string(), document_hash: z.string(), source_id: z.string(), source_url: z.string().url(),
+  scope: z.enum(["normalized_filing", "transcript", "feed_excerpt", "provider_record"]),
+  start: z.number().int().nonnegative(), end: z.number().int().positive(), text: z.string(), text_hash: z.string(),
+  retrieved_at: z.string(), snapshot_url: z.string().nullable().optional(),
+}) satisfies z.ZodType<components["schemas"]["SourcePassage"]>;
+
+const ClaimAuditZ = z.object({
+  claim_id: z.string(),
+  section: z.enum(["executive_summary", "financial_snapshot", "recent_catalysts", "valuation", "earnings_call_tone_shift", "alt_data_signals", "bull_case", "bear_case", "risks"]),
+  kind: z.enum(["quote", "financial", "interpretation"]), proposed_text: z.string(), rendered_text: z.string().nullable().optional(),
+  observation_id: z.string().nullable().optional(),
+  citations: z.array(z.string()), status: z.enum(["verified", "needs_review", "rejected"]),
+  checks: z.array(z.object({ field: z.string(), claimed: z.string().nullable(), expected: z.string().nullable(), passed: z.boolean() })).default([]),
+  reasons: z.array(z.string()).default([]),
+}) satisfies z.ZodType<components["schemas"]["ClaimAudit"]>;
+
 const CitationZ = z.object({
   tag: z.string().regex(/^F[1-9]\d*$/).nullable().optional(),
   source_type: z.enum(["filing", "transcript", "news", "fact", "price", "macro", "estimates"]),
   source_id: z.string(),
   snippet: z.string(),
+  passages: z.array(SourcePassageZ).default([]),
+  observation_id: z.string().nullable().optional(),
 }) satisfies z.ZodType<CitationData>;
 
 export const MemoZ = z.object({
@@ -24,6 +43,9 @@ export const MemoZ = z.object({
   bear_case: z.string(),
   risks: z.string(),
   citations: z.array(CitationZ).default([]),
+  claim_audit: z.array(ClaimAuditZ).default([]),
+  verification_version: z.literal("claim-v1").nullable().default(null),
+  verification_issues: z.array(z.string()).default([]),
 }) satisfies z.ZodType<Memo, z.ZodTypeDef, components["schemas"]["Memo"]>;
 
 export const FinancialObservationZ = z.object({

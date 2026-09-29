@@ -4,16 +4,19 @@ import html as html_module
 import logging
 import re
 from typing import Any
+from datetime import datetime, timezone
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 import httpx
 from sqlalchemy import delete, func, select
 
 from src.db import ensure_company
-from src.db import Company
+from src.db import EvidenceDocument
 from src.db import Document as DocumentORM
 from src.db import SessionLocal
 from src.llm.embeddings import embed
 from src.models.filing import Filing
+from src.models.evidence import CapturedDocument
 from src.models.transcript import Transcript
 from src.settings import settings
 
@@ -82,6 +85,7 @@ async def _replace_documents(
     source_id: str,
     chunks: list[str],
     embeddings: list[list[float]],
+    document: CapturedDocument | None = None,
 ) -> int:
     if len(chunks) != len(embeddings):
         raise ValueError(
@@ -89,6 +93,8 @@ async def _replace_documents(
         )
     async with SessionLocal() as session:
         await ensure_company(session, ticker)
+        if document is not None:
+            await session.execute(pg_insert(EvidenceDocument).values(**document.model_dump()).on_conflict_do_nothing())
 
         await session.execute(
             delete(DocumentORM).where(
@@ -97,7 +103,10 @@ async def _replace_documents(
                 DocumentORM.source_id == source_id,
             )
         )
+        offset = 0
         for chunk, vector in zip(chunks, embeddings):
+            if document is not None and document.text[offset:offset + len(chunk)] != chunk:
+                raise ValueError("Chunk does not match the captured document span")
             session.add(
                 DocumentORM(
                     ticker=ticker,
@@ -105,8 +114,12 @@ async def _replace_documents(
                     source_id=source_id,
                     chunk_text=chunk,
                     embedding=vector,
+                    evidence_document_id=document.document_id if document else None,
+                    start_offset=offset if document else None,
+                    end_offset=offset + len(chunk) if document else None,
                 )
             )
+            offset += CHUNK_CHARS - OVERLAP_CHARS
         await session.commit()
     return len(chunks)
 
@@ -126,6 +139,9 @@ async def index_filing(filing: Filing) -> None:
         source_id=filing.accession_no,
         chunks=chunks,
         embeddings=embeddings,
+        document=CapturedDocument(ticker=filing.ticker, source_id=filing.accession_no,
+                                  source_url=filing.raw_url, scope="normalized_filing", text=text,
+                                  retrieved_at=datetime.now(timezone.utc)),
     )
     logger.info(
         "indexed filing %s (%d chunks)", filing.accession_no, len(chunks)
@@ -147,6 +163,9 @@ async def index_transcript(transcript: Transcript) -> None:
         source_id=source_id,
         chunks=chunks,
         embeddings=embeddings,
+        document=CapturedDocument(ticker=transcript.ticker, source_id=source_id,
+                                  source_url=transcript.source.url, scope="transcript", text=transcript.content,
+                                  retrieved_at=transcript.source.fetched_at),
     )
     logger.info(
         "indexed transcript %s %s (%d chunks)",
@@ -161,9 +180,10 @@ async def search(
     query: str,
     doc_type: str | None = None,
     k: int = 8,
+    source_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     ticker = ticker.upper()
-    if not query.strip():
+    if not query.strip() or source_ids == []:
         return []
     query_vectors = await embed([query])
     if not query_vectors:
@@ -178,15 +198,24 @@ async def search(
                 DocumentORM.doc_type,
                 DocumentORM.source_id,
                 DocumentORM.chunk_text,
+                DocumentORM.evidence_document_id,
+                DocumentORM.start_offset, DocumentORM.end_offset,
+                EvidenceDocument.source_url, EvidenceDocument.content_hash, EvidenceDocument.retrieved_at,
                 distance.label("distance"),
             )
+            .join(EvidenceDocument, EvidenceDocument.document_id == DocumentORM.evidence_document_id)
             .where(
                 DocumentORM.ticker == ticker,
+                EvidenceDocument.ticker == ticker,
+                DocumentORM.start_offset.is_not(None),
+                DocumentORM.end_offset.is_not(None),
                 DocumentORM.embedding.is_not(None),
             )
             .order_by(distance)
             .limit(k)
         )
+        if source_ids is not None:
+            stmt = stmt.where(DocumentORM.source_id.in_(source_ids))
         if doc_type is not None:
             stmt = stmt.where(DocumentORM.doc_type == doc_type)
         rows = (await session.execute(stmt)).all()
@@ -198,6 +227,10 @@ async def search(
             "source_id": row.source_id,
             "chunk_text": row.chunk_text,
             "similarity": 1.0 - float(row.distance),
+            "document_id": row.evidence_document_id, "document_hash": row.content_hash,
+            "source_url": row.source_url, "start": row.start_offset, "end": row.end_offset,
+            "retrieved_at": row.retrieved_at,
+            "chunk_id": f"{row.evidence_document_id}:{row.start_offset}:{row.end_offset}",
         }
         for row in rows
     ]

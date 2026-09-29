@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from src.models.evidence import SourcePassage
 
 
 class Citation(BaseModel):
@@ -12,6 +13,8 @@ class Citation(BaseModel):
     ]
     source_id: str
     snippet: str
+    passages: list[SourcePassage] = Field(default_factory=list)
+    observation_id: str | None = None
 
 
 class Finding(BaseModel):

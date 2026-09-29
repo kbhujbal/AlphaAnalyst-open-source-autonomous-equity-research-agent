@@ -159,3 +159,20 @@ async def test_legacy_facts_are_not_treated_as_verified_observations(db_session,
     db_session.add(Fact(ticker="TEST", period="2023-12-31", tag="Revenues", value=Decimal("100"), unit="USD", source="sec-api"))
     await db_session.commit()
     assert await financial_store.load_sec_observations("TEST", "2023-12-31") == []
+
+
+async def test_source_archive_retains_first_capture_and_detects_changed_versions(db_session, monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    from src.fetchers import evidence_store
+    from src.models.evidence import CapturedDocument, passage_at, passage_matches
+    monkeypatch.setattr(evidence_store, "SessionLocal", async_sessionmaker(db_session.bind, expire_on_commit=False))
+    original = CapturedDocument(ticker="TEST", source_id="filing-1", source_url="https://example.test/source", scope="normalized_filing", text="Exact retained source text.", retrieved_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await evidence_store.save_document(original)
+    repeat = original.model_copy(update={"retrieved_at": original.retrieved_at + timedelta(days=1)})
+    retained = await evidence_store.save_document(repeat)
+    assert retained.retrieved_at == original.retrieved_at
+    revised = original.model_copy(update={"text": "Revised source text."})
+    await evidence_store.save_document(revised)
+    archive = await evidence_store.load_documents({original.document_id, revised.document_id})
+    assert len(archive) == 2
+    assert passage_matches(passage_at(retained, 0, len(retained.text)), archive[original.document_id], "TEST")

@@ -202,6 +202,8 @@ async def db_factory(monkeypatch) -> AsyncIterator:
 
     Session = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(indexer_module, "SessionLocal", Session)
+    from src.fetchers import evidence_store
+    monkeypatch.setattr(evidence_store, "SessionLocal", Session)
     try:
         yield Session
     finally:
@@ -211,44 +213,18 @@ async def db_factory(monkeypatch) -> AsyncIterator:
 
 
 async def _seed(session_factory) -> None:
-    from src.db import Company, Document
-
+    from src.models.evidence import CapturedDocument
     near = [1.0] + [0.0] * 1023
     far = [0.0] * 1023 + [1.0]
-
-    async with session_factory() as session:
-        session.add(Company(ticker="TSLA"))
-        session.add(Company(ticker="MSFT"))
-        session.add(
-            Document(
-                ticker="TSLA",
-                doc_type="filing",
-                source_id="0001-23-001",
-                chunk_text="Tesla revenue grew 25% in 2023",
-                embedding=near,
-            )
-        )
-        session.add(
-            Document(
-                ticker="TSLA",
-                doc_type="transcript",
-                source_id="2023Q4",
-                chunk_text="On the call, the CEO discussed margins",
-                embedding=far,
-            )
-        )
-        # cross-ticker doc with the SAME embedding as the near one — must be
-        # excluded by the ticker filter.
-        session.add(
-            Document(
-                ticker="MSFT",
-                doc_type="filing",
-                source_id="msft-1",
-                chunk_text="Azure revenue accelerated",
-                embedding=near,
-            )
-        )
-        await session.commit()
+    for ticker, kind, sid, text, vector in (
+        ("TSLA", "filing", "0001-23-001", "Tesla revenue grew 25% in 2023", near),
+        ("TSLA", "transcript", "2023Q4", "On the call, the CEO discussed margins", far),
+        ("MSFT", "filing", "msft-1", "Azure revenue accelerated", near),
+    ):
+        document = CapturedDocument(ticker=ticker, source_id=sid, source_url=f"https://example.test/{ticker}/{sid}",
+                                    scope="normalized_filing" if kind == "filing" else "transcript", text=text,
+                                    retrieved_at=datetime.now(timezone.utc))
+        await indexer_module._replace_documents(ticker, kind, sid, [text], [vector], document=document)
 
 
 @pytest.mark.integration
@@ -290,3 +266,26 @@ async def test_search_filters_by_doc_type(db_factory, mocker) -> None:
     assert len(results) == 1
     assert results[0]["doc_type"] == "transcript"
     assert results[0]["source_id"] == "2023Q4"
+
+
+@pytest.mark.integration
+async def test_search_preserves_version_offsets_and_filters_specific_filings(db_factory, mocker):
+    await _seed(db_factory)
+    mocker.patch.object(indexer_module, "embed", AsyncMock(return_value=[[1.0] + [0.0] * 1023]))
+    results = await search("TSLA", "revenue", source_ids=["0001-23-001"])
+    assert len(results) == 1
+    assert results[0]["start"] == 0
+    assert results[0]["end"] == len(results[0]["chunk_text"])
+    assert results[0]["document_id"]
+    assert await search("TSLA", "revenue", source_ids=["nonexistent"]) == []
+
+
+@pytest.mark.integration
+async def test_reindexing_keeps_prior_source_versions(db_factory):
+    from src.fetchers.evidence_store import load_documents
+    from src.models.evidence import CapturedDocument
+    original = CapturedDocument(ticker="TSLA", source_id="filing-1", source_url="https://example.test/filing", scope="normalized_filing", text="Original revenue disclosure.", retrieved_at=datetime.now(timezone.utc))
+    revised = original.model_copy(update={"text": "Revised revenue disclosure."})
+    for document in (original, revised):
+        await indexer_module._replace_documents("TSLA", "filing", "filing-1", [document.text], [[1.0] + [0.0] * 1023], document=document)
+    assert len(await load_documents({original.document_id, revised.document_id})) == 2

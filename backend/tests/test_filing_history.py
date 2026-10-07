@@ -56,7 +56,7 @@ async def test_historical_pages_preserve_originals_amendments_and_deduplicate(se
 async def test_outside_window_and_future_amendments_do_not_leak_into_as_of_history(services):
     recent = rows(row(1), row(2,"10-Q/A","2025-03-02"), row(3,filed="2020-01-01"))
     respx.get(BASE+f"CIK{CIK}.json").mock(return_value=httpx.Response(200,json={"filings":{"recent":recent,"files":[]}}))
-    batch = await history.fetch_historical_10qs("TEST", as_of=AS_OF)
+    batch = await history.fetch_historical_10qs("TEST", as_of=AS_OF, lookback_days=1098)
     assert len(batch.filings) == 1 and batch.filings[0].filing_date == date(2024,8,1)
 
 
@@ -144,10 +144,9 @@ async def test_failed_extractions_are_not_marked_complete(mocker):
 async def test_unparsed_amendment_blocks_quantitative_reuse_instead_of_assuming_nonfinancial(mocker):
     amendment=filing().model_copy(update={"filing_type":"10-Q/A", "accession_no":"amendment"})
     batch=history.FilingHistoryBatch(ticker="TEST",as_of=AS_OF,filings=[amendment])
-    mocker.patch.object(period_inputs,"fetch_latest_10k",AsyncMock(side_effect=ValueError("unavailable")))
-    mocker.patch.object(period_inputs,"fetch_historical_10qs",AsyncMock(return_value=batch))
+    mocker.patch.object(period_inputs,"fetch_historical_filings",AsyncMock(return_value=batch))
     mocker.patch.object(period_inputs,"extract_retained_facts",AsyncMock(side_effect=ValueError("No XBRL facts")))
-    with pytest.raises(period_inputs.UnresolvedAmendmentError, match="unresolved 10-Q/A"):
+    with pytest.raises(period_inputs.UnresolvedAmendmentError, match="unresolved 10-K/A or 10-Q/A"):
         await period_inputs.fetch_period_bridge_inputs("TEST")
 
 
@@ -192,8 +191,7 @@ async def test_successful_amendment_keeps_context_coverage_warning(mocker):
     amended=filing().model_copy(update={"filing_type":"10-Q/A","accession_no":"amendment"})
     history_batch=history.FilingHistoryBatch(ticker="TEST",as_of=AS_OF,filings=[amended])
     fact=version(35,"amendment")
-    mocker.patch.object(period_inputs,"fetch_latest_10k",AsyncMock(side_effect=ValueError("missing annual")))
-    mocker.patch.object(period_inputs,"fetch_historical_10qs",AsyncMock(return_value=history_batch))
+    mocker.patch.object(period_inputs,"fetch_historical_filings",AsyncMock(return_value=history_batch))
     mocker.patch.object(period_inputs,"extract_retained_facts",AsyncMock(return_value=[fact]))
     facts,warnings=await period_inputs.fetch_period_bridge_inputs("TEST")
     assert facts == [fact]

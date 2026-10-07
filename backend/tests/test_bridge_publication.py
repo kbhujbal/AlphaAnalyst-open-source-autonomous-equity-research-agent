@@ -88,8 +88,7 @@ async def test_peer_bridge_ingestion_retains_existing_sec_contexts(mocker):
     from src.fetchers.filing_history import FilingHistoryBatch
     filings = [_filing("10-K", "annual"), _filing("10-Q", "interim")]
     items = ytd_inputs()
-    mocker.patch.object(period_inputs, "fetch_latest_10k", AsyncMock(return_value=filings[0]))
-    mocker.patch.object(period_inputs, "fetch_historical_10qs", AsyncMock(return_value=FilingHistoryBatch(ticker="TEST", as_of=AS_OF, filings=[filings[1]])))
+    mocker.patch.object(period_inputs, "fetch_historical_filings", AsyncMock(return_value=FilingHistoryBatch(ticker="TEST", as_of=AS_OF, filings=filings)))
     extraction = mocker.patch.object(period_inputs, "extract_retained_facts", AsyncMock(side_effect=[items[:1], items[1:]]))
     facts, warnings = await period_inputs.fetch_period_bridge_inputs("TEST")
     assert facts == items and not warnings
@@ -99,8 +98,9 @@ async def test_peer_bridge_ingestion_retains_existing_sec_contexts(mocker):
 async def test_failed_peer_interim_extraction_is_disclosed(mocker):
     from src.fetchers import period_inputs
     from tests.test_pipeline import _filing
-    mocker.patch.object(period_inputs, "fetch_latest_10k", AsyncMock(return_value=_filing("10-K", "annual")))
-    mocker.patch.object(period_inputs, "fetch_historical_10qs", AsyncMock(side_effect=ValueError("No 10-Q available")))
+    from src.fetchers.filing_history import FilingHistoryBatch
+    mocker.patch.object(period_inputs, "fetch_historical_filings", AsyncMock(return_value=FilingHistoryBatch(
+        ticker="TEST", as_of=AS_OF, filings=[_filing("10-K", "annual")], warnings=["No 10-Q available"])))
     mocker.patch.object(period_inputs, "extract_retained_facts", AsyncMock(return_value=ytd_inputs()[:1]))
     facts, warnings = await period_inputs.fetch_period_bridge_inputs("TEST")
     assert len(facts) == 1

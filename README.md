@@ -647,17 +647,38 @@ comparability. That limitation is explicitly shown in reconstruction warnings ra
 than implied to be fully verified.
 
 
-## Historical 10-Q ingestion and filing-version reconciliation
+## Historical 10-K/10-Q ingestion and filing-version reconciliation
 
-Both the target and up to five peers now ingest bounded SEC quarterly history,
-including `10-Q/A` amendments. Discovery reads `filings.recent` and follows the
+Both the target and up to five peers ingest bounded SEC annual and quarterly history,
+including `10-K/A` and `10-Q/A` amendments in one shared submissions walk.
+Discovery reads `filings.recent` and follows the
 historical pages listed in `filings.files` through the
 [SEC submissions API](https://www.sec.gov/search-filings/edgar-application-programming-interfaces).
 It does not assume the recent array contains every needed quarter.
 
-Defaults are a 1,098-day filing-date lookback, at most 12 quarterly filings total
-(originals plus amendments), and at most three historical archive pages. Function
-parameters allow bounded expansion. Limits, inaccessible pages, malformed arrays,
+Defaults are a 2,192-day (approximately six-year) filing-date lookback, at most
+96 filings total (annual, quarterly, originals and amendments), and at most ten
+historical archive pages. `fetch_period_bridge_inputs` accepts `as_of`,
+`lookback_days`, `max_filings`, `max_archive_files`, and `refresh`. These parameters
+also reach `fetch_historical_filings`; dedicated `fetch_historical_10ks` and
+`fetch_historical_10qs` wrappers filter forms with default budgets of 32 and 64
+filings respectively. Requests can expand to 14,610 days (approximately forty
+years), 400 filings and 100 archive pages. Requests beyond those bounds fail
+before network access. The filing-date interval is relative to the requested
+cutoff, so an older cutoff walks relevant archive pages rather than substituting
+today's latest annual filing. Annual and interim facts then use the same immutable
+extraction cache, availability filters, source verification and reconciliation.
+
+Discovery batches expose `requested_start`, `as_of`, `forms`,
+`archive_pages_available`, `archive_pages_loaded`, `filings_discovered`, and
+`coverage_complete`. Completeness means all relevant pages advertised by the SEC
+index were read and valid discovered filings fit within the requested budget; it
+is scoped to that filing-date interval and form set, not proof of complete XBRL
+coverage or every historical accounting period. Empty discoveries remain flagged.
+A discovered amendment excluded by the filing budget is unresolved and blocks
+quantitative reuse. Only warning-free discoveries are cached. Duplicate identical
+archive-index entries do not consume extra retrieval slots. Limits, inaccessible
+pages, malformed arrays,
 conflicting accession metadata and excluded rows produce explicit partial-coverage
 warnings. Requested cutoffs exclude later filing/acceptance dates. A late amendment
 to an older report remains a distinct accession; it does not replace unrelated
@@ -741,7 +762,7 @@ No dependency or database migration is added. The existing source, observation a
 calculation stores retain the additional data in their existing JSON fields. New
 metadata is omitted when absent so legacy record JSON, IDs and replay remain
 compatible. Existing migrations through `0005` remain necessary. Run a fresh analysis
-to ingest historical quarters; an initialized PostgreSQL/Redis environment, SEC
+to ingest historical annual and interim filings; an initialized PostgreSQL/Redis environment, SEC
 contact User-Agent and existing provider credentials are still required.
 
 Tests cover archive discovery, amendments, duplicate/conflicting metadata, as-of and
@@ -752,7 +773,7 @@ source/audit tampering, reported snapshot updates, publication, offline replay,
 frontend contracts and database round-trip retention of original/revised versions.
 
 Pending: live SEC/sec-api/FMP account validation and current PostgreSQL integration
-checks; broader historical 10-K discovery and coverage beyond retrieval limits;
+checks; on-demand backfill beyond configured budgets and public historical/as-of analysis APIs;
 financial-expert examples and review of non-reliance notices, amendment purpose,
 custom taxonomies, reclassifications and accounting-policy changes; an explicit
 analyst reconciliation/approval workflow for blocked cross-filing aggregates;
@@ -760,3 +781,12 @@ security-master/CIK changes and a complete point-in-time data system; durable
 operational ingestion ledgers, monitoring and distributed request coordination.
 These checks establish known-version numerical consistency, not a full restatement
 or audit opinion.
+
+
+Historical annual coverage tests additionally exercise old cutoffs when the latest
+10-K is in the future, 10-K/A extraction failures and malformed metadata, UTC
+acceptance-date boundaries, requests beyond the former ten-year/40-filing limits,
+and original/amended annual growth calculations with exact source-linked replay.
+Historical filing ingestion alone does not make full reports point-in-time:
+market prices, issuer identities, news and vendor snapshots still need historical
+availability coverage. A cutoff is a UTC date (end-of-day), not an intraday timestamp.

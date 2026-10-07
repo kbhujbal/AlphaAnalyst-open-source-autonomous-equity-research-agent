@@ -1,8 +1,8 @@
-"""Bounded historical interim ingestion with immutable facts and accession-level reuse."""
+"""Bounded historical annual and interim ingestion with immutable facts and accession-level reuse."""
 import asyncio
 from src import cache
-from src.fetchers.filings import fetch_latest_10k, extract_facts
-from src.fetchers.filing_history import fetch_historical_10qs
+from src.fetchers.filings import extract_facts
+from src.fetchers.filing_history import fetch_historical_filings
 from src.fetchers.evidence_store import load_observations
 from src.fetchers.financial_store import observation_row
 from src.diagnostics import public_diagnostic
@@ -35,20 +35,15 @@ async def extract_retained_facts(filing, *, refresh=False, extractor=None):
     return facts
 
 
-async def fetch_period_bridge_inputs(ticker, *, as_of=None, max_quarter_filings=12, refresh=False):
+async def fetch_period_bridge_inputs(ticker, *, as_of=None, lookback_days=2192,
+        max_filings=96, max_archive_files=10, refresh=False):
     warnings, facts = [], []
-    annual, history = await asyncio.gather(fetch_latest_10k(ticker),
-        fetch_historical_10qs(ticker, as_of=as_of, max_filings=max_quarter_filings, refresh=refresh), return_exceptions=True)
-    filings = []
-    if isinstance(annual, Exception):
-        warnings.append(f"{ticker}: annual anchor unavailable: {public_diagnostic(str(annual))}")
-    elif as_of is None or annual.filing_date <= as_of:
-        filings.append(annual)
-    if isinstance(history, Exception):
-        warnings.append(f"{ticker}: historical quarterly discovery unavailable: {public_diagnostic(str(history))}")
-    else:
-        warnings.extend(f"{ticker}: {warning}" for warning in history.warnings)
-        filings.extend(history.filings)
+    # Discover both forms together: one submissions walk and one shared budget.
+    # Never substitute today's latest annual for an older as-of anchor.
+    history = await fetch_historical_filings(ticker, as_of=as_of, lookback_days=lookback_days,
+        max_filings=max_filings, max_archive_files=max_archive_files, refresh=refresh)
+    warnings.extend(f"{ticker}: {warning}" for warning in history.warnings)
+    filings = history.filings
     unique = {filing.accession_no:filing for filing in filings}
     gate = asyncio.Semaphore(2)
     async def ingest(filing):
@@ -56,15 +51,15 @@ async def fetch_period_bridge_inputs(ticker, *, as_of=None, max_quarter_filings=
             return await extract_retained_facts(filing, refresh=refresh)
     ordered = sorted(unique.values(), key=lambda f:(f.filing_date, f.accession_no))
     results = await asyncio.gather(*(ingest(filing) for filing in ordered), return_exceptions=True)
-    unresolved = list(history.unresolved_amendments) if not isinstance(history, Exception) else []
+    unresolved = list(history.unresolved_amendments)
     for filing, result in zip(ordered, results):
         if isinstance(result, Exception):
-            if filing.filing_type == "10-Q/A": unresolved.append(filing.accession_no)
+            if filing.filing_type.endswith("/A"): unresolved.append(filing.accession_no)
             warnings.append(f"{ticker}: {filing.filing_type} {filing.accession_no} extraction unavailable: {public_diagnostic(str(result))}; existing versions retained")
         else:
             facts.extend(result)
-            if filing.filing_type == "10-Q/A":
+            if filing.filing_type.endswith("/A"):
                 warnings.append(f"{ticker}: amendment {filing.accession_no} retained; normalized-context reconciliation is not a formal accounting restatement review")
     if unresolved:
-        raise UnresolvedAmendmentError(f"{ticker}: unresolved 10-Q/A {', '.join(unresolved)}; quantitative inputs withheld until amendment contents are verified")
+        raise UnresolvedAmendmentError(f"{ticker}: unresolved 10-K/A or 10-Q/A {', '.join(unresolved)}; quantitative inputs withheld until amendment contents are verified")
     return list({o.observation_id:o for o in facts}.values()), warnings

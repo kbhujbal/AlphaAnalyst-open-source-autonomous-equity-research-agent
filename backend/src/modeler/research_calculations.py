@@ -114,7 +114,7 @@ def _build_annual_calculations(ticker: str, facts: list[FinancialObservation], *
 
 
 
-def build_research_calculations(ticker, facts, *, scenario=None, peer_facts=None, as_of=None):
+def build_research_calculations(ticker, facts, *, scenario=None, peer_facts=None, as_of=None, bridge_facts=None, peer_bridge_facts=None):
     from src.modeler.ttm_selection import build_ttm_calculations
     peer_facts = peer_facts or {}
     annual, warnings = _build_annual_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts)
@@ -128,4 +128,26 @@ def build_research_calculations(ticker, facts, *, scenario=None, peer_facts=None
     if any(t.recipe == "comps-ttm-v1" for t in ttm):
         annual = [t for t in annual if t.recipe != "comps-v1"]
         warnings = [w for w in warnings if not w.startswith(("Comparable", "Comparables"))]
-    return annual + ttm, warnings + issues
+    result = annual + ttm
+    messages = warnings + issues
+    if bridge_facts is not None:
+        from src.modeler.bridge_selection import build_bridge_calculations
+        bridged, bridge_warnings = build_bridge_calculations(ticker, bridge_facts, peer_bridge_facts or peer_facts, reference)
+        # Keep existing recipes when they already supply the same trailing
+        # window/cohort. A newer or larger reconstructed cohort can supersede it.
+        def score(trace):
+            return (sum(k.startswith("peer_cap:") for k in trace.bindings), trace.valuation_date)
+        old_comps = [t for t in result if t.recipe in {"comps-v1", "comps-ttm-v1"}]
+        new_comps = [t for t in bridged if t.recipe == "comps-flex-v1"]
+        existing_ttm_comps = [t for t in old_comps if t.recipe == "comps-ttm-v1"]
+        if new_comps and (not existing_ttm_comps or score(new_comps[0]) > max(score(t) for t in existing_ttm_comps)):
+            result = [t for t in result if t.recipe not in {"comps-v1", "comps-ttm-v1"}]
+        else:
+            bridged = [t for t in bridged if t.recipe != "comps-flex-v1"]
+        old_ttm = [t for t in result if t.recipe == "ttm-income-v1"]
+        flex = next((t for t in bridged if t.recipe == "ttm-flex-v1"), None)
+        if old_ttm and flex and "operating_cash_flow" not in flex.bindings and flex.periods[ticker].end <= old_ttm[0].periods[ticker].end:
+            bridged = [t for t in bridged if t.recipe != "ttm-flex-v1"]
+        result += bridged
+        messages += bridge_warnings
+    return list({t.calculation_id: t for t in result}.values()), messages

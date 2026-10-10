@@ -193,6 +193,7 @@ def stubbed_pipeline(mocker, tmp_path):
     mocker.patch.object(pipeline, "load_company_observations", AsyncMock(return_value=[]))
 
     from src.fetchers.quarterly import QuarterlyBatch
+    mocker.patch.object(pipeline, "fetch_period_bridge_inputs", AsyncMock(return_value=([], [])))
     mocker.patch.object(pipeline, "fetch_quarterly_income", AsyncMock(return_value=QuarterlyBatch()))
 
     # Exporters

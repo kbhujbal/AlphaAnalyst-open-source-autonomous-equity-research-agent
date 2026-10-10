@@ -67,11 +67,12 @@ const DCFScenarioZ = z.object({
 
 const CalculationTraceZ = z.object({
   engine: z.literal("decimal-28-half-even-v1"),
-  recipe: z.enum(["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1", "ttm-income-v1", "comps-ttm-v1"]),
+  recipe: z.enum(["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1", "ttm-income-v1", "comps-ttm-v1", "q4-v1", "ttm-ytd-v1", "cashflow-difference-v1", "ttm-flex-v1", "comps-flex-v1"]),
   ticker: z.string(), bindings: z.record(z.array(z.string())), scenario: DCFScenarioZ.nullable().optional(),
   valuation_date: z.string().nullable().optional(), currency: z.string(), calculation_id: z.string(),
   steps: z.array(z.object({ node: z.string(), operation: z.string(), inputs: z.array(z.string()).default([]),
     value: z.string(), unit: z.string(), observation_id: z.string().nullable().optional(), note: z.string().nullable().optional() })),
+  period_methods: z.record(z.enum(["quarters", "annual-ytd", "q4-plus-quarters", "cashflow-quarters"])).optional(),
   periods: z.record(z.object({
     kind: z.enum(["instant", "duration", "unknown"]), start: z.string().nullable().optional(), end: z.string().nullable().optional(),
     basis: z.enum(["annual", "quarterly", "ytd", "ttm", "unknown"]),

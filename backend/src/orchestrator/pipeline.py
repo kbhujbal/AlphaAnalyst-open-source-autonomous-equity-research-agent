@@ -37,6 +37,7 @@ from src.fetchers.filings import (
 )
 from src.fetchers.indexer import index_filing, index_transcript
 from src.fetchers.macro import fetch_macro_snapshot
+from src.fetchers.period_inputs import fetch_period_bridge_inputs
 from src.fetchers.quarterly import fetch_quarterly_income
 from src.fetchers.market_cap import fetch_market_caps
 from src.fetchers.market_data import fetch_fundamentals, fetch_peers, fetch_prices
@@ -142,14 +143,16 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
         preferred = list(fundamentals.observations.values())
         contexts = {(o.metric, o.period.end) for o in preferred}
         facts = [o for o in history if (o.metric, o.period.end) not in contexts] + preferred
+        bridge_facts = list({o.observation_id: o for o in history + preferred if not (o.source.provider == "fmp" and o.metric in {"revenue", "net_income"} and o.period.basis == "quarterly")}.values())
         facts = [o for o in facts if not (o.metric in {"revenue", "net_income"} and o.period.basis == "quarterly")]
         try:
             batch = await fetch_quarterly_income(ticker)
             facts += batch.observations
+            bridge_facts += batch.observations
             errors.extend(batch.warnings)
         except Exception as exc:
             errors.append(f"TTM input {ticker} unavailable: {public_diagnostic(str(exc))}")
-        peer_facts = {}
+        peer_facts, peer_bridge_facts = {}, {}
         for peer in peers[:5]:
             if peer.ticker == ticker or peer.ticker in peer_facts:
                 continue
@@ -157,6 +160,9 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
                 snapshot = await fetch_fundamentals(peer.ticker)
                 historical = await load_company_observations(peer.ticker)
                 selected = list(snapshot.observations.values())
+                sec_inputs, source_warnings = await fetch_period_bridge_inputs(peer.ticker)
+                errors.extend(source_warnings)
+                bridge_data = list({o.observation_id: o for o in historical + selected + sec_inputs if not (o.source.provider == "fmp" and o.metric in {"revenue", "net_income"} and o.period.basis == "quarterly")}.values())
                 contexts = {(o.metric, o.period.end) for o in selected}
                 data = [o for o in historical if (o.metric, o.period.end) not in contexts] + selected
                 # Fresh supported cap batches replace all archived/TTM caps;
@@ -165,6 +171,7 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
                 try:
                     quarters = await fetch_quarterly_income(peer.ticker)
                     data += quarters.observations
+                    bridge_data += quarters.observations
                     errors.extend(f"TTM input {peer.ticker}: {warning}" for warning in quarters.warnings)
                 except Exception as exc:
                     errors.append(f"TTM input {peer.ticker} unavailable: {public_diagnostic(str(exc))}")
@@ -172,12 +179,15 @@ async def _build_calculations(ticker, fundamentals, peers, scenario, errors):
                     batch = await fetch_market_caps(peer.ticker)
                     errors.extend(f"Comparable peer {peer.ticker}: {warning}" for warning in batch.warnings)
                     data += batch.observations
+                    bridge_data = [o for o in bridge_data if o.metric != "market_cap"] + batch.observations
                 except Exception as exc:
                     errors.append(f"Comparable peer {peer.ticker} market cap unavailable: {public_diagnostic(str(exc))}")
+                    bridge_data = [o for o in bridge_data if o.metric != "market_cap"]
+                peer_bridge_facts[peer.ticker] = bridge_data
                 peer_facts[peer.ticker] = data
             except Exception as exc:
                 errors.append(f"Comparable peer {peer.ticker} unavailable: {public_diagnostic(str(exc))}")
-        traces, warnings = build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts, as_of=datetime.now(timezone.utc).date())
+        traces, warnings = build_research_calculations(ticker, facts, scenario=scenario, peer_facts=peer_facts, as_of=datetime.now(timezone.utc).date(), bridge_facts=bridge_facts, peer_bridge_facts=peer_bridge_facts)
         errors.extend(warnings)
         return traces
     except Exception as exc:

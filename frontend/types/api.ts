@@ -202,7 +202,7 @@ export interface components {
              * Recipe
              * @enum {string}
              */
-            recipe: "growth-v1" | "net-margin-v1" | "ocf-margin-v1" | "dcf-fcff-v1" | "comps-v1" | "ttm-income-v1" | "comps-ttm-v1";
+            recipe: "growth-v1" | "net-margin-v1" | "ocf-margin-v1" | "dcf-fcff-v1" | "comps-v1" | "ttm-income-v1" | "comps-ttm-v1" | "q4-v1" | "ttm-ytd-v1" | "cashflow-difference-v1" | "ttm-flex-v1" | "comps-flex-v1";
             /** Ticker */
             ticker: string;
             /** Bindings */
@@ -220,6 +220,10 @@ export interface components {
             };
             /** Currency */
             currency: string;
+            /** Period Methods */
+            period_methods?: {
+                [key: string]: "quarters" | "annual-ytd" | "q4-plus-quarters" | "cashflow-quarters";
+            };
             /** Periods */
             periods?: {
                 [key: string]: components["schemas"]["ReportingPeriod"];

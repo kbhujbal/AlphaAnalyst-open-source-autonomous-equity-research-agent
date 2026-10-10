@@ -97,6 +97,8 @@ def export_pdf(memo: Memo, path: Path, *, warnings: list[str] | None = None) -> 
         for record in memo.calculations:
             trace = record.trace
             story.append(Paragraph(escape(f"{trace.recipe}: {trace.calculation_id}; {trace.engine}"), styles["Heading3"]))
+            for role, method in trace.period_methods.items():
+                story.append(Paragraph(escape(f"{role}: reconstruction method {method}"), styles["BodyText"]))
             for ticker, period in trace.periods.items():
                 story.append(Paragraph(escape(f"{ticker}: {period.basis} window {period.start} to {period.end}"), styles["BodyText"]))
             if trace.scenario:

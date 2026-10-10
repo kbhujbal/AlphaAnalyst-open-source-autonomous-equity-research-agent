@@ -126,6 +126,7 @@ async def test_pipeline_fetches_target_and_peer_quarters_for_ttm_comparables(arc
     snapshots = {ticker: FundamentalSnapshot(ticker=ticker, period="2024-12-31", confidence="low", source=source) for ticker in ("TEST", "P1")}
     mocker.patch.object(pipeline, "load_company_observations", AsyncMock(return_value=[]))
     mocker.patch.object(pipeline, "fetch_fundamentals", AsyncMock(side_effect=lambda ticker: snapshots[ticker]))
+    mocker.patch.object(pipeline, "fetch_period_bridge_inputs", AsyncMock(return_value=([], [])))
     quarters = mocker.patch.object(pipeline, "fetch_quarterly_income", AsyncMock(side_effect=lambda ticker: quarterly.QuarterlyBatch(observations=[o for o in (own if ticker == "TEST" else peer) if o.metric != "market_cap"])))
     mocker.patch.object(pipeline, "fetch_market_caps", AsyncMock(return_value=MarketCapBatch(observations=[o for o in peer if o.metric == "market_cap"])))
     class Clock:

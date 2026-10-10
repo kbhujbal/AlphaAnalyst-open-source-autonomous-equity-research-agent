@@ -117,3 +117,14 @@ test("TTM records retain different fiscal windows and quarter-boundary provenanc
   assert.equal(memo.calculations[0].trace.periods.PEER.end, "2024-11-02");
   assert.equal(memo.calculations[0].sources[0].observation.period.start_method, "prior_quarter_end");
 });
+
+
+test("period reconstruction recipes and chosen methods survive trace downloads", () => {
+  const record = JSON.parse(readFileSync(new URL("./fixtures/calculation-record.json", import.meta.url), "utf8"));
+  record.trace.recipe = "ttm-flex-v1";
+  record.trace.period_methods = { revenue: "annual-ytd" };
+  const memo = MemoZ.parse({ ...demo.sections, calculations: [record] });
+  assert.equal(memo.calculations[0].trace.period_methods.revenue, "annual-ytd");
+  record.trace.period_methods.revenue = "sum-cumulative-quarters";
+  assert.equal(MemoZ.safeParse({ ...demo.sections, calculations: [record] }).success, false);
+});

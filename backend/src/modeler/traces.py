@@ -78,8 +78,16 @@ def _instant(obs, metric, ticker, currency, as_of):
         raise CalculationUnavailable(f"{metric}: requires a matching dated, unit-consistent observation")
 
 
-def calculate(recipe: str, ticker: str, bindings: dict[str, list[str]], observations: dict[str, FinancialObservation], *, scenario: DCFScenario | None = None, valuation_date: date | None = None) -> CalculationTrace:
+def calculate(recipe: str, ticker: str, bindings: dict[str, list[str]], observations: dict[str, FinancialObservation], *, scenario: DCFScenario | None = None, valuation_date: date | None = None, period_methods: dict | None = None) -> CalculationTrace:
     with localcontext(CONTEXT):
+        if recipe in {"q4-v1", "ttm-ytd-v1", "cashflow-difference-v1"}:
+            from src.modeler.period_bridges import calculate_bridge
+            return calculate_bridge(recipe, ticker, bindings, observations, scenario, valuation_date, period_methods)
+        if recipe in {"ttm-flex-v1", "comps-flex-v1"}:
+            from src.modeler.flex_periods import calculate_flex
+            return calculate_flex(recipe, ticker, bindings, observations, scenario, valuation_date, period_methods or {})
+        if period_methods:
+            raise CalculationUnavailable("Series methods are not supported by this recipe")
         if recipe in {"ttm-income-v1", "comps-ttm-v1"}:
             from src.modeler.ttm import calculate_ttm
             return calculate_ttm(recipe, ticker, bindings, observations, scenario, valuation_date)
@@ -258,7 +266,7 @@ def _calculate(recipe, ticker, bindings, observations, scenario, valuation_date)
 
 
 def replay(trace: CalculationTrace, observations: dict[str, FinancialObservation]) -> CalculationTrace:
-    rebuilt = calculate(trace.recipe, trace.ticker, trace.bindings, observations, scenario=trace.scenario, valuation_date=trace.valuation_date)
+    rebuilt = calculate(trace.recipe, trace.ticker, trace.bindings, observations, scenario=trace.scenario, valuation_date=trace.valuation_date, period_methods=trace.period_methods)
     if rebuilt.model_dump(mode="json") != trace.model_dump(mode="json"):
         raise CalculationUnavailable("Calculation trace differs from registered recipe replay")
     return rebuilt

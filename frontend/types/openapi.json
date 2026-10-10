@@ -465,7 +465,12 @@
               "dcf-fcff-v1",
               "comps-v1",
               "ttm-income-v1",
-              "comps-ttm-v1"
+              "comps-ttm-v1",
+              "q4-v1",
+              "ttm-ytd-v1",
+              "cashflow-difference-v1",
+              "ttm-flex-v1",
+              "comps-flex-v1"
             ],
             "title": "Recipe"
           },
@@ -522,6 +527,19 @@
           "currency": {
             "type": "string",
             "title": "Currency"
+          },
+          "period_methods": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "quarters",
+                "annual-ytd",
+                "q4-plus-quarters",
+                "cashflow-quarters"
+              ]
+            },
+            "type": "object",
+            "title": "Period Methods"
           },
           "periods": {
             "additionalProperties": {

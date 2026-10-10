@@ -40,7 +40,7 @@ class CalculationStep(BaseModel):
 class CalculationTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
     engine: Literal["decimal-28-half-even-v1"] = "decimal-28-half-even-v1"
-    recipe: Literal["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1", "ttm-income-v1", "comps-ttm-v1"]
+    recipe: Literal["growth-v1", "net-margin-v1", "ocf-margin-v1", "dcf-fcff-v1", "comps-v1", "ttm-income-v1", "comps-ttm-v1", "q4-v1", "ttm-ytd-v1", "cashflow-difference-v1", "ttm-flex-v1", "comps-flex-v1"]
     ticker: str
     bindings: dict[str, list[str]]
     scenario: DCFScenario | None = None
@@ -48,6 +48,7 @@ class CalculationTrace(BaseModel):
     steps: list[CalculationStep]
     outputs: dict[str, str]
     currency: str
+    period_methods: dict[str, Literal["quarters", "annual-ytd", "q4-plus-quarters", "cashflow-quarters"]] = Field(default_factory=dict, exclude_if=lambda value: not value)
     periods: dict[str, ReportingPeriod] = Field(default_factory=dict, exclude_if=lambda value: not value)
     warnings: list[str] = Field(default_factory=list)
 

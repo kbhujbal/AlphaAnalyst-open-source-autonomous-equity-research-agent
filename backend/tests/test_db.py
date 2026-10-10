@@ -244,3 +244,22 @@ async def test_quarter_boundaries_and_ttm_calculations_survive_database_reload(d
     assert not issues
     await calculation_store.save_record(records[0])
     assert (await calculation_store.load_record(trace.calculation_id)).trace.periods["TEST"].basis == "ttm"
+
+
+async def test_period_bridge_sources_and_method_identity_survive_database_reload(db_session, monkeypatch):
+    from src.fetchers import evidence_store, financial_store, calculation_store
+    from src.calculation_verification import verify_calculations
+    from src.modeler.traces import calculate
+    from tests.test_period_bridges import AS_OF, ytd_inputs
+    factory = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    for module in (evidence_store, financial_store, calculation_store):
+        monkeypatch.setattr(module, "SessionLocal", factory)
+    items = ytd_inputs()
+    await financial_store.persist_observations(items)
+    trace = calculate("ttm-flex-v1", "TEST", {"revenue":[o.observation_id for o in items]}, {o.observation_id:o for o in items}, valuation_date=AS_OF, period_methods={"revenue":"annual-ytd"})
+    records, issues = await verify_calculations([trace], "TEST")
+    assert not issues
+    await calculation_store.save_record(records[0])
+    restored = await calculation_store.load_record(trace.calculation_id)
+    assert restored.trace.period_methods == {"revenue":"annual-ytd"}
+    assert restored.model_dump(mode="json") == records[0].model_dump(mode="json")

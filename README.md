@@ -543,9 +543,104 @@ require a disposable configured database.
 
 Remaining work: financial expert calibration of these comparison tolerances and a
 larger independently reviewed company corpus; actual provider/account validation;
-SEC-driven Q4 residual reconstruction and annual-plus-current-YTD-minus-prior-YTD
-TTM methods; cumulative cash-flow differencing; statement restatement selection,
+broader historical SEC ingestion and statement restatement selection,
 issuer/share-class/corporate-action handling; true calendarization and seasonality
 adjustments; broader non-US/half-year reporting and currency/FX support. The existing
 annual DCF has not been silently switched to TTM inputs. Source availability checks
 do not turn this application into a fully point-in-time backtesting system.
+
+
+## Q4, annual-plus-YTD and cumulative cash-flow reconstruction
+
+New registered recipes extend period coverage without inserting calculated amounts
+into reported-observation storage:
+
+| Recipe | Formula and output |
+| --- | --- |
+| `q4-v1` | Fiscal annual amount minus discrete Q1, Q2 and Q3 amounts; returns the actual residual Q4 interval. |
+| `ttm-ytd-v1` | Previous fiscal annual amount + current fiscal YTD − comparative prior fiscal YTD; retains the full trailing interval. |
+| `cashflow-difference-v1` | Later cumulative operating cash flow − immediately preceding cumulative operating cash flow, sharing one fiscal start; returns one discrete quarter. Annual − nine-month YTD also reconstructs Q4 cash flow. |
+| `ttm-flex-v1` | Composes source-linked TTM revenue, earnings and optional operating cash flow/margins using explicit per-role methods. |
+| `comps-flex-v1` | Uses those complete TTM series for P/S, eligible P/E and implied capitalization, including peers whose missing Q4 or discrete-quarter history prevents the earlier four-quarter recipe. |
+
+Supported additive metrics are revenue, net income and operating cash flow. EPS,
+ratios, balance-sheet instants, unknown periods and segmented observations are not
+reconstructed. Every input must have complete actual dates, compatible entity,
+metric, units, currency and provider, and known filing availability on/before the
+explicit as-of date. A filing dated before its covered period ends is rejected.
+Quarter/year start months are not assumed to be January.
+
+Q4 needs a complete 350–380-day fiscal year and three distinct chronological,
+contiguous 75–105-day quarters beginning at its fiscal start. Their versions must
+not postdate the annual anchor. The remaining interval must itself be a supported
+quarter. Annual/YTD mixtures, overlapping periods and missing Q1–Q3 do not produce
+a residual. The result stays a calculation trace, never a fabricated reported Q4.
+
+Annual-plus-YTD requires the prior prefix to start at the annual's fiscal start,
+the current prefix to start the day after that fiscal year ends, and prefix lengths
+to differ by at most seven days. Prefixes may represent the first quarter, half-year
+or nine months; a quarterly first-prefix is accepted only through these fiscal-start
+checks. Current and comparative prior YTD must share an identified document, filing
+date and accession/version. The annual anchor cannot postdate that interim anchor.
+The resulting trailing interval must span 350–380 days.
+
+Cash-flow differencing requires the same fiscal start for both original cumulative
+amounts and a 75–105-day residual interval. The later input must explicitly be YTD
+or annual; subtracting arbitrary standalone quarters is not accepted. Q1 already
+represents a discrete first prefix. A cumulative cash-flow year can therefore use
+Q1 directly, difference Q2−Q1, Q3−Q2 and annual−Q3, and retain all intermediate
+subtractions. Negative quarter cash flow is preserved, not clipped or annualized.
+Adjacent valid differences can be published even when no complete revenue TTM exists.
+The cash-flow metric here is operating cash flow, not free cash flow or FCFF.
+
+`CalculationTrace.period_methods` records each chosen series strategy:
+`quarters`, `q4-plus-quarters`, `annual-ytd`, or `cashflow-quarters`. Complete TTM
+series retain the existing 185-day age, 100-day peer end-gap and seven-day length-gap
+limits. Revenue/earnings must use matching methods, actual component intervals and
+filing versions; cash-flow margins require a matching trailing interval/currency.
+Peer series can use different disclosed methods because each denominator still
+represents a complete trailing year. They are never blended with annual-only
+multiples. A supported reconstructed TTM cohort supersedes annual-only comparables;
+an existing four-quarter TTM cohort remains preferred unless reconstruction adds
+more eligible peers or a newer common capitalization date. Existing recipe versions
+and replay behavior remain unchanged.
+
+Selection prefers the newest supported trailing end, then reported quarters,
+Q4 reconstruction, annual-plus-YTD, and cumulative cash-flow-year differencing.
+Equivalent-priority conflicting canonical source versions require explicit selection;
+values are not averaged. Missing or incompatible earnings withhold P/E while valid
+P/S survives. The report, PDF and JSON downloads expose chosen methods and actual
+periods, and source-linked claim rendering distinguishes standalone as-of dates from
+capitalization dates. Offline replay verifies the registered bridge arithmetic and,
+with captured documents, the original provider payloads.
+
+Target SEC annual/interim contexts already extracted by the pipeline are reused.
+For up to five peers, the pipeline now extracts the latest SEC 10-K and 10-Q as well
+as fetching the existing annual and discrete-quarter vendor data. Explicit SEC
+start/end durations provide genuine cumulative YTD contexts; the application does
+not relabel vendor discrete cash-flow or income rows as YTD. Original context
+versions and comparative entries are retained by the existing observation store.
+Older SEC contexts can be used from that archive subject to availability checks.
+Fresh vendor quarterly batches replace archived vendor quarterly candidates, and a
+failed market-cap refresh still cannot reactivate an old capitalization snapshot.
+Extraction errors and missing contexts are disclosed as coverage warnings.
+
+No new database migration or dependency is added. Prior migrations through `0005`
+remain required. Run a fresh analysis to gather the additional interim contexts.
+New method metadata is omitted when empty so legacy observation IDs, trace IDs and
+immutable record JSON remain compatible. The existing DCF is unchanged.
+
+Validation covers hand-computed Q4 and annual/YTD totals, cumulative differences
+(including negative quarters), reconstructed Q4 in a rolling TTM, provider/metric/unit
+and period incompatibilities, conflicting versions and filing chronology, peer
+multiples, source reload failures/tampering, publication gates, offline replay,
+peer ingestion, frontend contracts and a database persistence round-trip test.
+
+Pending: live provider/account validation and current PostgreSQL integration tests;
+financial expert review and independently reconciled company examples; automated
+restatement/accounting-policy reconciliation across annual/interim filings; earlier
+10-Q history when the latest reports lack needed prefixes; richer 52/53-week and
+non-US fiscal-transition coverage; additional cash-flow metrics, FX and share-class
+handling. Source/period/chronology checks do not prove cross-filing accounting
+comparability. That limitation is explicitly shown in reconstruction warnings rather
+than implied to be fully verified.
